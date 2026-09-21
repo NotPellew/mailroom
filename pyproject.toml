@@ -18,8 +18,8 @@ dependencies = [
 emailman = "EmailMan.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/NotPellew/EmailMan"
-Issues = "https://github.com/NotPellew/EmailMan/issues"
+Homepage = "https://github.com/NotPellew/open-emailman"
+Issues = "https://github.com/NotPellew/open-emailman/issues"
 
 [project.optional-dependencies]
 gmail = [
