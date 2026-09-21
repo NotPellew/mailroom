@@ -1,0 +1,77 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "emailman"
+version = "0.1.0"
+description = "Local-first mail label suggestion, review, and export (Gmail sync optional)"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "flask>=3.1,<4",
+    "requests>=2.32,<3",
+]
+
+[project.scripts]
+emailman = "EmailMan.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/NotPellew/EmailMan"
+Issues = "https://github.com/NotPellew/EmailMan/issues"
+
+[project.optional-dependencies]
+gmail = [
+    "google-api-python-client>=2.149,<3",
+    "google-auth-httplib2>=0.2,<1",
+    "google-auth-oauthlib>=1.2,<2",
+    "keyring>=25,<26",
+]
+dev = [
+    "pytest>=8",
+    "ruff>=0.11",
+    "mypy>=1.15",
+    "emailman[gmail]",
+]
+browser = [
+    "playwright>=1.48,<2",
+]
+
+[dependency-groups]
+dev = [
+    "emailman[dev,gmail]",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["EmailMan"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+# Browser checks are opt-in: `pytest -m browser` overrides the default deselection.
+addopts = "-m 'not browser'"
+markers = [
+    "browser: headless browser inertness/link checks (needs the 'browser' extra and 'playwright install chromium')",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 99
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",  # line length handled by formatter / legacy long lines
+    "UP",    # modern typing upgrades (defer bulk migration to separate task)
+    "SIM",   # style simplifications
+    "B904",  # exception chaining in existing raises
+    "I001",  # import sorting
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = false
+warn_unused_configs = true
+check_untyped_defs = false
+ignore_missing_imports = true

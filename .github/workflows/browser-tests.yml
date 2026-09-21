@@ -1,0 +1,29 @@
+name: browser-tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  browser-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the browser and dev extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev,browser]'
+
+      - name: Install headless Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run inertness and link verification suite
+        env:
+          EMAILMAN_REQUIRE_BROWSER: "1"
+        run: python -m pytest -m browser -v

@@ -1,0 +1,240 @@
+{
+  "model": {
+    "provider": "ollama",
+    "endpoint": "http://127.0.0.1:11434",
+    "id": "qwen2.5:7b"
+  },
+  "timeout": 30.0,
+  "sample_limit": 100,
+  "labels": [
+    {
+      "id": "Type/Newsletter",
+      "name": "Newsletter",
+      "axis": "kind",
+      "description": "Generic mass mail sent to a broad list: pricing or availability updates, product announcements, deals, and recurring digests. Not specific to you.",
+      "examples": [
+        "Weekly digest",
+        "Product announcement",
+        "Limited-time deal"
+      ],
+      "exclusions": [
+        "Mail specific to your account or an order",
+        "Order receipt or invoice",
+        "OTP or sign-in alert"
+      ]
+    },
+    {
+      "id": "Type/Targeted",
+      "name": "Targeted",
+      "axis": "kind",
+      "description": "Company or service mail that is specific to you rather than a generic mass mailing: account and service notices, changes, invitations, and booking or order updates. Not a generic newsletter/pricing/availability update, and not personal 1:1 mail.",
+      "examples": [
+        "Account notice for your subscription",
+        "Service change affecting your account",
+        "Invitation to a group you belong to"
+      ],
+      "exclusions": [
+        "Generic newsletter, pricing/availability update, or mass deal",
+        "A message whose main point is that you must act (also set NeedsReply or NeedsAction)",
+        "Personal 1:1 correspondence"
+      ]
+    },
+    {
+      "id": "Type/Personal",
+      "name": "Personal",
+      "axis": "kind",
+      "description": "A 1:1 message from a person to you, not a company or automated sender.",
+      "examples": [
+        "Note from a friend",
+        "Personal reply in a thread",
+        "Message from a family member"
+      ],
+      "exclusions": [
+        "Company or automated notification",
+        "Newsletter or mass mail",
+        "Receipt or invoice"
+      ]
+    },
+    {
+      "id": "Type/NeedsReply",
+      "name": "Needs reply",
+      "axis": "kind",
+      "description": "Overlay: a written reply is expected from you - answer a question, respond to a person, or send information back. Combine it with the matching kind label. Not for mail that only requires an action in a system (use NeedsAction).",
+      "examples": [
+        "Please reply by Friday",
+        "Can you answer this?",
+        "Awaiting your response"
+      ],
+      "exclusions": [
+        "You only need to act in a system, not reply (use NeedsAction)",
+        "OTP or magic link",
+        "Shipping update with nothing to do",
+        "Receipt you only need to file"
+      ]
+    },
+    {
+      "id": "Type/NeedsAction",
+      "name": "Needs action",
+      "axis": "kind",
+      "description": "Overlay: you must act in a system, not reply - log in, open a link, confirm, pay, or update settings. Combine it with the matching kind label. Not for mail where a written reply is expected (use NeedsReply).",
+      "examples": [
+        "Confirm your email address",
+        "Your payment is due",
+        "Sign in to keep your account active"
+      ],
+      "exclusions": [
+        "A written reply is expected (use NeedsReply)",
+        "OTP or magic link",
+        "Newsletter",
+        "Receipt you only need to file"
+      ]
+    },
+    {
+      "id": "Type/SecurityAlert",
+      "name": "Security Alert",
+      "axis": "kind",
+      "description": "Sign-in, passkey, OAuth app, or suspicious-activity notice about your account. Not a code.",
+      "examples": [
+        "New sign-in to your account",
+        "A new OAuth app was added to your account",
+        "New passkey added"
+      ],
+      "exclusions": [
+        "Verification code or magic link",
+        "Newsletter about security products"
+      ]
+    },
+    {
+      "id": "Type/Verification",
+      "name": "Verification",
+      "axis": "kind",
+      "description": "One-time code, magic link, or access PIN. Delete after use.",
+      "examples": [
+        "Your verification code is 123456",
+        "Magic link for your login",
+        "Access PIN"
+      ],
+      "exclusions": [
+        "Security alert with no code",
+        "Recovery-code list or password-change notice"
+      ]
+    },
+    {
+      "id": "Type/Receipt",
+      "name": "Receipt",
+      "axis": "kind",
+      "description": "Invoice, payment, dunning, or order confirmation. When it is a purchase, also set exactly one Purchase/* label.",
+      "examples": [
+        "Order confirmation",
+        "Payment receipt",
+        "Invoice"
+      ],
+      "exclusions": [
+        "Shipping update without payment info",
+        "Newsletter or abandoned-cart promo"
+      ]
+    },
+    {
+      "id": "Type/ShippingUpdate",
+      "name": "Shipping Update",
+      "axis": "kind",
+      "description": "A parcel moved, is out for delivery, or was delivered. Not the invoice.",
+      "examples": [
+        "Your parcel is out for delivery",
+        "Your order was delivered"
+      ],
+      "exclusions": [
+        "Invoice or payment receipt",
+        "Order confirmation before the parcel exists"
+      ]
+    },
+    {
+      "id": "Purchase/Tech",
+      "name": "Tech",
+      "axis": "purchase",
+      "description": "Receipt or invoice for hardware, software, apps, APIs, or digital storefronts.",
+      "examples": [
+        "App store receipt",
+        "Software invoice",
+        "Cloud API invoice"
+      ],
+      "exclusions": [
+        "Groceries or restaurants",
+        "Electricity / water / internet utility bill",
+        "Clothing or apparel"
+      ]
+    },
+    {
+      "id": "Purchase/FoodDrink",
+      "name": "Food & drink",
+      "axis": "purchase",
+      "description": "Receipt or invoice for groceries, restaurants, delivery, or beverages.",
+      "examples": [
+        "Supermarket receipt",
+        "Restaurant bill",
+        "Food delivery receipt"
+      ],
+      "exclusions": [
+        "Hardware, software, or API invoices",
+        "Utility bills",
+        "Clothing"
+      ]
+    },
+    {
+      "id": "Retention/30Days",
+      "name": "30 days",
+      "axis": "retention",
+      "description": "Disposable once read: keep about a month, then it stops mattering. Use only for transient content you will not revisit; when unsure between this and 1 year, choose 1 year. A relevance judgement; not tied to the message type.",
+      "examples": [
+        "Sale ends today",
+        "Package delivered",
+        "One-time code",
+        "Expiring promo"
+      ],
+      "exclusions": [
+        "Invoices or receipts (always keep forever)",
+        "Account, booking, or event mail (keep 1 year or longer)",
+        "Tax documents",
+        "Contracts"
+      ]
+    },
+    {
+      "id": "Retention/1Year",
+      "name": "1 year",
+      "axis": "retention",
+      "description": "Default for real mail: keep about a year. Worth referencing later but not proof of a purchase, e.g. account or registration notices, bookings, event details, results, and reminders about something already arranged. A relevance judgement; not tied to the message type.",
+      "examples": [
+        "Booking confirmation",
+        "Event announcement",
+        "Account change notice",
+        "Registration follow-up",
+        "Election result"
+      ],
+      "exclusions": [
+        "Invoices or receipts (always keep forever)",
+        "One-time code or delivery ping (use 30 days)",
+        "Contracts or tax (use Forever)"
+      ]
+    },
+    {
+      "id": "Retention/Forever",
+      "name": "Forever",
+      "axis": "retention",
+      "description": "Keep indefinitely: the record copy. Invoices and receipts always go here; also tax, contracts, utility bills or dunning, and account or security proof. A relevance judgement; not tied to the message type.",
+      "examples": [
+        "Annual invoice",
+        "Tax receipt",
+        "Signed contract",
+        "Utility dunning",
+        "Warranty invoice"
+      ],
+      "exclusions": [
+        "One-time code",
+        "Newsletter",
+        "Shipping ping",
+        "Event or booking details (use 1 year)"
+      ]
+    }
+  ],
+  "debug": false
+}

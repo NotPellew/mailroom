@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>EmailMan - Review</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        header { background: #1a1a2e; color: white; padding: 1rem 2rem; }
+        header h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+        header p { color: #a0a0a0; font-size: 0.9rem; }
+
+        nav {
+            background: #16213e;
+            padding: 0.5rem 2rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            border-bottom: 1px solid #0f0f1a;
+            flex-wrap: wrap;
+        }
+
+        nav a { color: #a0a0a0; text-decoration: none; padding: 0.35rem 0.75rem; border-radius: 4px; }
+        nav a:hover { background: #0f3460; color: white; }
+        nav .counts { color: #a0a0a0; font-size: 0.85rem; margin-left: auto; }
+
+        main { padding: 1.5rem 2rem; max-width: 1400px; margin: 0 auto; }
+
+        .status-card, .container {
+            background: white;
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-bottom: 1.25rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; }
+        .status-item { text-align: center; padding: 0.75rem; background: #f8f9fa; border-radius: 4px; }
+        .status-item .value { font-size: 1.6rem; font-weight: bold; color: #1a1a2e; }
+        .status-item .label { color: #6c757d; font-size: 0.85rem; }
+
+        .toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin-bottom: 1rem; }
+        .field { display: flex; flex-direction: column; gap: 0.25rem; }
+        .field label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.04em; }
+        select, input[type="text"] { padding: 0.4rem 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+        button {
+            padding: 0.45rem 0.8rem;
+            border: 1px solid #0f3460;
+            background: #0f3460;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        button:hover:not(:disabled) { background: #1a1a2e; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        button.secondary { background: white; color: #0f3460; }
+        button.secondary:hover:not(:disabled) { background: #eef2f7; }
+        button.danger { background: #8b1e1e; border-color: #8b1e1e; }
+
+        .review-layout { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, 1.2fr); gap: 1rem; }
+
+        .review-list-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
+        .pagination { display: flex; align-items: center; gap: 0.75rem; }
+        .review-list { border: 1px solid #e3e6ea; border-radius: 6px; overflow: hidden; max-height: 70vh; overflow-y: auto; }
+        .review-item { padding: 0.75rem 0.9rem; border-bottom: 1px solid #eef0f3; cursor: pointer; }
+        .review-item:hover { background: #f8f9fa; }
+        .review-item.active { background: #eaf1fb; border-left: 3px solid #0f3460; }
+        .review-item .row1 { display: flex; justify-content: space-between; gap: 0.5rem; }
+        .review-item .sender { font-weight: 600; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .review-item .subject { color: #333; font-size: 0.9rem; margin: 0.15rem 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .review-item .reason { color: #6c757d; font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .review-item .suggestion { font-size: 0.8rem; margin-top: 0.25rem; color: #0f3460; }
+
+        .badge { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 10px; font-size: 0.7rem; white-space: nowrap; }
+        .badge.proposed { background: #e3f0e3; color: #1e5b1e; }
+        .badge.uncertain { background: #fdf1d6; color: #8a5a00; }
+        .badge.error { background: #f8d7da; color: #8b1e1e; }
+        .badge.unreviewed { background: #e9ecef; color: #495057; }
+        .badge.accepted { background: #d4edda; color: #155724; }
+        .badge.corrected { background: #cce5ff; color: #004085; }
+        .badge.skipped { background: #e2e3e5; color: #383d41; }
+        .badge.pending { background: #fff3cd; color: #856404; }
+
+        .review-detail { border: 1px solid #e3e6ea; border-radius: 6px; padding: 1rem; min-height: 200px; }
+        .review-detail h3 { font-size: 1rem; margin-bottom: 0.5rem; word-break: break-word; }
+        .review-detail .meta { font-size: 0.8rem; color: #6c757d; margin-bottom: 0.75rem; word-break: break-word; }
+        .review-detail .section { margin-bottom: 1rem; }
+        .review-detail .section h4 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: #6c757d; margin-bottom: 0.35rem; }
+        pre.body-preview {
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: #f8f9fa;
+            border: 1px solid #e3e6ea;
+            border-radius: 4px;
+            padding: 0.6rem;
+            max-height: 260px;
+            overflow-y: auto;
+            font-size: 0.82rem;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+        .notice { background: #fdf1d6; color: #8a5a00; padding: 0.5rem 0.6rem; border-radius: 4px; font-size: 0.85rem; }
+        .mode-banner { margin: 0.75rem 0 0; padding: 0.6rem 0.75rem; border-radius: 4px; font-size: 0.85rem; border: 1px solid #d7dce1; background: #f1f4f7; color: #333; }
+        .mode-banner.gmail { background: #e8f1fb; border-color: #bcd6f0; }
+        .label-choices { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+        .label-choice { display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; }
+        .label-choice.stale { color: #8a5a00; background: #fdf1d6; border-radius: 4px; padding: 0.1rem 0.4rem; }
+        .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+        .toast { margin-top: 0.5rem; font-size: 0.85rem; }
+        .toast.ok { color: #155724; }
+        .toast.err { color: #8b1e1e; }
+        .muted { color: #6c757d; font-size: 0.85rem; }
+        .link-out { color: #0f3460; }
+
+        nav button.nav-toggle { background: transparent; color: #a0a0a0; border: 1px solid #0f3460; }
+        nav button.nav-toggle:hover { background: #0f3460; color: white; }
+        .labels-group h4 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: #6c757d; margin: 0.5rem 0 0.35rem; }
+        .label-card { border: 1px solid #e3e6ea; border-radius: 6px; padding: 0.6rem 0.75rem; margin-bottom: 0.5rem; }
+        .label-card .label-id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; color: #0f3460; }
+        .label-card .label-name { font-weight: 600; }
+        .label-card .label-desc { font-size: 0.85rem; margin: 0.2rem 0; word-break: break-word; }
+        .label-card .label-meta { font-size: 0.8rem; color: #6c757d; word-break: break-word; }
+        .label-form .field { margin-bottom: 0.5rem; }
+        textarea { padding: 0.4rem 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; width: 100%; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>EmailMan</h1>
+        <p>Classify local mail, review and correct suggestions, and export decisions — all on this machine. Gmail sync is optional; nothing here changes Gmail.</p>
+    </header>
+
+    <nav>
+        <a href="/health" target="_blank" rel="noopener noreferrer">Health</a>
+        <a href="/api/labels" target="_blank" rel="noopener noreferrer">Labels</a>
+        <a href="/api/status" target="_blank" rel="noopener noreferrer">Status</a>
+        <button id="labels-toggle" class="nav-toggle" type="button">Manage labels</button>
+        <span class="counts" id="nav-counts"></span>
+    </nav>
+
+    <main>
+        <div id="mode-banner" class="mode-banner" hidden></div>
+
+        <div class="status-card">
+            <div class="status-grid">
+                <div class="status-item"><div class="value" id="status-accounts">-</div><div class="label">Accounts</div></div>
+                <div class="status-item"><div class="value" id="status-messages">-</div><div class="label">Messages</div></div>
+                <div class="status-item"><div class="value" id="status-proposals">-</div><div class="label">Awaiting Review</div></div>
+                <div class="status-item"><div class="value" id="status-decisions">-</div><div class="label">Saved Choices</div></div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="toolbar">
+                <div class="field">
+                    <label for="filter-status">Review status</label>
+                    <select id="filter-status">
+                        <option value="all">All</option>
+                        <option value="unreviewed">Unreviewed</option>
+                        <option value="pending">Reopened (pending)</option>
+                        <option value="accepted">Accepted</option>
+                        <option value="corrected">Corrected</option>
+                        <option value="skipped">Skipped</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="filter-state">Suggestion state</label>
+                    <select id="filter-state">
+                        <option value="scored" selected>Has suggestion</option>
+                        <option value="all">All mail</option>
+                        <option value="proposed">Proposed</option>
+                        <option value="uncertain">Uncertain</option>
+                        <option value="error">No suggestion / error</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="filter-label">Proposed label</label>
+                    <select id="filter-label"><option value="all">All</option></select>
+                </div>
+                <div class="field">
+                    <label for="filter-disagrees">Kind disagreement</label>
+                    <label class="label-choice">
+                        <input type="checkbox" id="filter-disagrees"> suggestion differs from my saved kind
+                    </label>
+                </div>
+                <button id="refresh-btn" class="secondary">Refresh</button>
+
+                <div class="field" style="margin-left:auto;">
+                    <label>Export reviewed choices</label>
+                    <label class="label-choice">
+                        <input type="checkbox" id="export-skipped"> include skipped
+                    </label>
+                </div>
+                <button id="export-csv" class="secondary">Export CSV</button>
+                <button id="export-json" class="secondary">Export JSON</button>
+            </div>
+
+            <div id="conflicts-panel" class="status-card" hidden>
+                <h3 style="font-size:1rem;margin-bottom:0.5rem;">Conflicts — same subject, different labels you picked</h3>
+                <p class="muted">Editing the conflicts JSON file does nothing. Pick one set here to apply it locally to every message in the group.</p>
+                <div id="conflicts-list"></div>
+            </div>
+
+            <div id="labels-panel" class="status-card" hidden>
+                <h3 style="font-size:1rem;margin-bottom:0.5rem;">Label definitions</h3>
+                <p class="muted">Add, edit, or remove the labels the model can suggest. Changes are saved to config.json on this machine and apply immediately. Deleting a label that is referenced by a saved decision is refused.</p>
+                <div id="labels-groups"></div>
+                <div class="label-form">
+                    <h4 id="label-form-title" style="font-size:0.8rem;text-transform:uppercase;letter-spacing:0.04em;color:#6c757d;margin:0.5rem 0 0.35rem;">Add label</h4>
+                    <div class="toolbar">
+                        <div class="field">
+                            <label for="label-id">ID</label>
+                            <input type="text" id="label-id" placeholder="Type/Newsletter">
+                        </div>
+                        <div class="field">
+                            <label for="label-name">Name</label>
+                            <input type="text" id="label-name">
+                        </div>
+                        <div class="field">
+                            <label for="label-axis">Axis</label>
+                            <select id="label-axis">
+                                <option value="kind">kind</option>
+                                <option value="purchase">purchase</option>
+                                <option value="retention">retention</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="label-description">Description</label>
+                        <input type="text" id="label-description">
+                    </div>
+                    <div class="field">
+                        <label for="label-examples">Examples (one per line)</label>
+                        <textarea id="label-examples" rows="2"></textarea>
+                    </div>
+                    <div class="field">
+                        <label for="label-exclusions">Exclusions (one per line)</label>
+                        <textarea id="label-exclusions" rows="2"></textarea>
+                    </div>
+                    <div class="actions">
+                        <button id="label-save" type="button">Add label</button>
+                        <button id="label-cancel" class="secondary" type="button" hidden>Cancel</button>
+                    </div>
+                    <div id="label-error" class="toast"></div>
+                </div>
+            </div>
+
+            <div class="review-layout">
+                <div class="review-list-wrap">
+                    <div id="review-list" class="review-list">
+                        <div class="muted" style="padding:1rem;">Loading…</div>
+                    </div>
+                    <div class="pagination">
+                        <button id="prev-page" class="secondary" disabled>Prev</button>
+                        <span id="page-info" class="muted"></span>
+                        <button id="next-page" class="secondary" disabled>Next</button>
+                    </div>
+                </div>
+                <div id="review-detail" class="review-detail">
+                    <p class="muted">Select a message to review its suggestion and cached text.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        (function () {
+            "use strict";
+
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute("content") || "";
+            const state = { items: [], labels: [], currentId: null, current: null, offset: 0, limit: 50, total: 0, editingLabelId: null };
+            const LABEL_AXES = ["kind", "purchase", "retention"];
+            const LABEL_AXIS_ORDER = ["kind", "purchase", "retention", "Other"];
+
+            function el(tag, props, children) {
+                const node = document.createElement(tag);
+                if (props) {
+                    Object.keys(props).forEach(function (key) {
+                        if (key === "class") { node.className = props[key]; }
+                        else if (key === "text") { node.textContent = props[key]; }
+                        else { node.setAttribute(key, props[key]); }
+                    });
+                }
+                (children || []).forEach(function (child) {
+                    if (child) { node.appendChild(child); }
+                });
+                return node;
+            }
+
+            async function api(path, options) {
+                const opts = Object.assign({ method: "GET" }, options || {});
+                opts.headers = Object.assign({ "Accept": "application/json" }, opts.headers || {});
+                if (opts.method && opts.method !== "GET") {
+                    opts.headers["X-CSRF-Token"] = csrfToken;
+                    if (opts.body && typeof opts.body !== "string") {
+                        opts.headers["Content-Type"] = "application/json";
+                        opts.body = JSON.stringify(opts.body);
+                    }
+                }
+                const response = await fetch(path, opts);
+                const text = await response.text();
+                let data = null;
+                try { data = text ? JSON.parse(text) : null; } catch (e) { data = { error: text }; }
+                if (!response.ok) {
+                    const message = (data && data.error) ? data.error : ("HTTP " + response.status);
+                    throw new Error(message);
+                }
+                return data;
+            }
+
+            function statusBadge(text, kind) {
+                return el("span", { class: "badge " + (kind || ""), text: text });
+            }
+
+            async function loadStatus() {
+                try {
+                    const data = await api("/api/status");
+                    document.getElementById("status-accounts").textContent = data.accounts || 0;
+                    document.getElementById("status-messages").textContent = data.messages || 0;
+                    document.getElementById("status-proposals").textContent = data.proposals_pending || 0;
+                    document.getElementById("status-decisions").textContent = data.reviewed || 0;
+                    document.getElementById("nav-counts").textContent =
+                        (data.messages || 0) + " messages · " + (data.proposals_pending || 0) + " awaiting review";
+
+                    const banner = document.getElementById("mode-banner");
+                    if (data.mode === "gmail") {
+                        banner.className = "mode-banner gmail";
+                        banner.textContent =
+                            "Gmail sync available (optional): apply or sync labels only from the CLI, explicitly.";
+                    } else {
+                        banner.className = "mode-banner";
+                        banner.textContent =
+                            "Local only — no Gmail account connected. Review and exports are saved on this machine.";
+                    }
+                    banner.hidden = false;
+                } catch (e) { /* status is best-effort */ }
+            }
+
+            async function loadLabels() {
+                try {
+                    const data = await api("/api/labels");
+                    state.labels = data.labels || [];
+                } catch (e) { state.labels = []; }
+
+                const select = document.getElementById("filter-label");
+                const previous = select.value;
+                select.replaceChildren(el("option", { value: "all", text: "All" }));
+                state.labels.forEach(function (label) {
+                    select.appendChild(el("option", { value: label.id, text: label.name + " (" + label.id + ")" }));
+                });
+                const keep = previous && Array.from(select.options).some(function (option) {
+                    return option.value === previous;
+                });
+                select.value = keep ? previous : "all";
+
+                renderLabelPanel();
+            }
+
+            function labelAxisGroup(label) {
+                const axis = label && label.axis;
+                return LABEL_AXES.indexOf(axis) >= 0 ? axis : "Other";
+            }
+
+            function renderLabelPanel() {
+                const groups = document.getElementById("labels-groups");
+                if (!groups) { return; }
+                groups.replaceChildren();
+                const byAxis = {};
+                LABEL_AXIS_ORDER.forEach(function (axis) { byAxis[axis] = []; });
+                state.labels.forEach(function (label) {
+                    byAxis[labelAxisGroup(label)].push(label);
+                });
+                LABEL_AXIS_ORDER.forEach(function (axis) {
+                    if (!byAxis[axis].length) { return; }
+                    const group = el("div", { class: "labels-group" });
+                    group.appendChild(el("h4", { text: axis }));
+                    byAxis[axis].forEach(function (label) {
+                        group.appendChild(renderLabelCard(label));
+                    });
+                    groups.appendChild(group);
+                });
+            }
+
+            function renderLabelCard(label) {
+                const card = el("div", { class: "label-card" });
+                const head = el("div");
+                head.appendChild(el("span", { class: "label-name", text: label.name || "(unnamed)" }));
+                head.appendChild(el("span", { class: "label-id", text: "  " + (label.id || "") }));
+                card.appendChild(head);
+                card.appendChild(el("div", { class: "label-desc", text: label.description || "" }));
+                if (label.examples && label.examples.length) {
+                    card.appendChild(el("div", { class: "label-meta", text: "examples: " + label.examples.join(", ") }));
+                }
+                if (label.exclusions && label.exclusions.length) {
+                    card.appendChild(el("div", { class: "label-meta", text: "exclusions: " + label.exclusions.join(", ") }));
+                }
+                const actions = el("div", { class: "actions" });
+                const editBtn = el("button", { class: "secondary", text: "Edit" });
+                editBtn.addEventListener("click", function () { startEditLabel(label); });
+                const delBtn = el("button", { class: "danger", text: "Delete" });
+                delBtn.addEventListener("click", function () { deleteLabel(label); });
+                actions.appendChild(editBtn);
+                actions.appendChild(delBtn);
+                card.appendChild(actions);
+                return card;
+            }
+
+            function splitLines(value) {
+                return (value || "").split("\n").map(function (line) { return line.trim(); }).filter(Boolean);
+            }
+
+            function setLabelError(message) {
+                const box = document.getElementById("label-error");
+                if (!box) { return; }
+                box.textContent = message || "";
+                box.className = message ? "toast err" : "toast";
+            }
+
+            function resetAxisOptions() {
+                const select = document.getElementById("label-axis");
+                Array.from(select.options).forEach(function (option) {
+                    if (LABEL_AXES.indexOf(option.value) < 0) { option.remove(); }
+                });
+            }
+
+            function setAxisValue(axis) {
+                const select = document.getElementById("label-axis");
+                const value = axis ? axis : "kind";
+                if (LABEL_AXES.indexOf(value) < 0 && !Array.from(select.options).some(function (option) {
+                    return option.value === value;
+                })) {
+                    select.appendChild(el("option", { value: value, text: value + " (other)" }));
+                }
+                select.value = value;
+            }
+
+            function resetLabelForm() {
+                state.editingLabelId = null;
+                document.getElementById("label-id").value = "";
+                document.getElementById("label-id").disabled = false;
+                document.getElementById("label-name").value = "";
+                resetAxisOptions();
+                document.getElementById("label-axis").value = "kind";
+                document.getElementById("label-description").value = "";
+                document.getElementById("label-examples").value = "";
+                document.getElementById("label-exclusions").value = "";
+                document.getElementById("label-form-title").textContent = "Add label";
+                document.getElementById("label-save").textContent = "Add label";
+                document.getElementById("label-cancel").hidden = true;
+                setLabelError("");
+            }
+
+            function startEditLabel(label) {
+                state.editingLabelId = label.id;
+                document.getElementById("label-id").value = label.id || "";
+                document.getElementById("label-id").disabled = true;
+                document.getElementById("label-name").value = label.name || "";
+                setAxisValue(label.axis);
+                document.getElementById("label-description").value = label.description || "";
+                document.getElementById("label-examples").value = (label.examples || []).join("\n");
+                document.getElementById("label-exclusions").value = (label.exclusions || []).join("\n");
+                document.getElementById("label-form-title").textContent = "Edit label " + (label.id || "");
+                document.getElementById("label-save").textContent = "Save label";
+                document.getElementById("label-cancel").hidden = false;
+                setLabelError("");
+            }
+
+            async function saveLabel() {
+                const payload = {
+                    id: document.getElementById("label-id").value.trim(),
+                    name: document.getElementById("label-name").value.trim(),
+                    axis: document.getElementById("label-axis").value,
+                    description: document.getElementById("label-description").value.trim(),
+                    examples: splitLines(document.getElementById("label-examples").value),
+                    exclusions: splitLines(document.getElementById("label-exclusions").value),
+                };
+                setLabelError("");
+                try {
+                    if (state.editingLabelId) {
+                        await api("/api/labels/" + encodeURIComponent(state.editingLabelId), {
+                            method: "PUT", body: payload,
+                        });
+                    } else {
+                        await api("/api/labels", { method: "POST", body: payload });
+                    }
+                    resetLabelForm();
+                    await refreshAfterLabelChange();
+                } catch (e) {
+                    setLabelError("Error: " + e.message);
+                }
+            }
+
+            async function deleteLabel(label) {
+                if (!window.confirm("Delete label '" + (label.id || "") + "'?")) { return; }
+                setLabelError("");
+                try {
+                    await api("/api/labels/" + encodeURIComponent(label.id), { method: "DELETE" });
+                    if (state.editingLabelId === label.id) { resetLabelForm(); }
+                    await refreshAfterLabelChange();
+                } catch (e) {
+                    setLabelError("Error: " + e.message);
+                }
+            }
+
+            async function refreshAfterLabelChange() {
+                await loadLabels();
+                await loadReview();
+                if (state.currentId) { await selectItem(state.currentId); }
+                loadStatus();
+            }
+
+            function labelNames(ids) {
+                return (ids || []).map(function (id) {
+                    const found = state.labels.find(function (l) { return l.id === id; });
+                    return found ? found.name : id;
+                }).join(" + ") || "(no labels)";
+            }
+
+            async function loadConflicts() {
+                const panel = document.getElementById("conflicts-panel");
+                const list = document.getElementById("conflicts-list");
+                try {
+                    const data = await api("/api/conflicts");
+                    const groups = data.groups || [];
+                    list.replaceChildren();
+                    if (!groups.length) {
+                        panel.hidden = true;
+                        return;
+                    }
+                    panel.hidden = false;
+                    groups.forEach(function (group) {
+                        const card = el("div", { class: "section" });
+                        card.appendChild(el("div", { text: (group.subjects && group.subjects[0]) || group.phrase || "(no subject)" }));
+                        card.appendChild(el("div", { class: "muted", text: group.n + " messages — pick one set for all of them:" }));
+                        const actions = el("div", { class: "actions" });
+                        (group.label_sets || []).forEach(function (ids) {
+                            const btn = el("button", { class: "secondary", text: "Use: " + labelNames(ids) });
+                            btn.addEventListener("click", function () {
+                                resolveConflict(group, ids);
+                            });
+                            actions.appendChild(btn);
+                        });
+                        card.appendChild(actions);
+                        list.appendChild(card);
+                    });
+                } catch (e) {
+                    panel.hidden = true;
+                }
+            }
+
+            async function resolveConflict(group, labelIds) {
+                const ids = (group.members || []).map(function (m) { return m.message_id; }).filter(Boolean);
+                if (!ids.length) { return; }
+                try {
+                    await api("/api/conflicts/resolve", {
+                        method: "POST",
+                        body: { message_ids: ids, label_ids: labelIds },
+                    });
+                    await Promise.all([loadConflicts(), loadReview(), loadStatus()]);
+                } catch (e) {
+                    window.alert("Could not save: " + e.message);
+                }
+            }
+
+            function renderList(items) {
+                const list = document.getElementById("review-list");
+                list.replaceChildren();
+                if (!items.length) {
+                    list.appendChild(el("div", { class: "muted", style: "padding:1rem;", text: "No messages match these filters." }));
+                    return;
+                }
+                items.forEach(function (item) {
+                    const card = el("div", {
+                        class: "review-item" + (item.message_id === state.currentId ? " active" : ""),
+                        "data-id": item.message_id,
+                    });
+                    card.appendChild(el("div", { class: "row1" }, [
+                        el("span", { class: "sender", text: item.sender || item.sender_email || "(unknown sender)" }),
+                        statusBadge(item.review_status, item.review_status),
+                    ]));
+                    card.appendChild(el("div", { class: "subject", text: item.subject || "(no subject)" }));
+                    card.appendChild(el("div", { class: "reason", text: item.proposal ? (item.proposal.reason || "") : "No suggestion available" }));
+                    const suggestion = el("div", { class: "suggestion" });
+                    suggestion.appendChild(statusBadge(
+                        item.suggestion_state === "proposed" ? "Proposed" :
+                        item.suggestion_state === "uncertain" ? "Uncertain" : "No suggestion"
+                    , item.suggestion_state));
+                    suggestion.appendChild(el("span", {
+                        text: " " + ((item.proposal && item.proposal.label_ids && item.proposal.label_ids.length)
+                            ? item.proposal.label_ids.join(", ") : "(no labels)"),
+                    }));
+                    card.appendChild(suggestion);
+                    card.addEventListener("click", function () { selectItem(item.message_id); });
+                    list.appendChild(card);
+                });
+            }
+
+            async function loadReview() {
+                const params = new URLSearchParams();
+                const status = document.getElementById("filter-status").value;
+                const stateValue = document.getElementById("filter-state").value;
+                const label = document.getElementById("filter-label").value;
+                if (status !== "all") { params.set("status", status); }
+                if (stateValue !== "all") { params.set("state", stateValue); }
+                if (label !== "all") { params.set("label", label); }
+                if (document.getElementById("filter-disagrees").checked) { params.set("disagrees", "1"); }
+                params.set("limit", String(state.limit));
+                params.set("offset", String(state.offset));
+                try {
+                    const data = await api("/api/review?" + params.toString());
+                    state.items = data.items || [];
+                    state.total = data.total || 0;
+                    state.offset = data.offset || 0;
+                    renderList(state.items);
+                    updatePager();
+                } catch (e) {
+                    const list = document.getElementById("review-list");
+                    list.replaceChildren(el("div", { class: "notice", text: "Failed to load review list: " + e.message }));
+                }
+            }
+
+            function updatePager() {
+                const info = document.getElementById("page-info");
+                const prev = document.getElementById("prev-page");
+                const next = document.getElementById("next-page");
+                const start = state.total === 0 ? 0 : state.offset + 1;
+                const end = Math.min(state.offset + state.items.length, state.total);
+                info.textContent = "Showing " + start + "\u2013" + end + " of " + state.total;
+                prev.disabled = state.offset <= 0;
+                next.disabled = state.offset + state.limit >= state.total;
+            }
+
+            function resetAndLoad() {
+                state.offset = 0;
+                loadReview();
+            }
+
+            function labelName(id) {
+                const found = state.labels.find(function (l) { return l.id === id; });
+                return found ? found.name : id;
+            }
+
+            function renderDetail(item) {
+                state.current = item;
+                const detail = document.getElementById("review-detail");
+                detail.replaceChildren();
+
+                detail.appendChild(el("h3", { text: item.subject || "(no subject)" }));
+                const isGmail = (item.source === "gmail" || (!item.source && item.gmail_message_id));
+                const metaParts = [
+                    (item.sender || "(unknown sender)") + (item.sender_email ? " <" + item.sender_email + ">" : "")
+                ];
+                if (isGmail) {
+                    metaParts.push("thread " + (item.thread_id || "?"));
+                    metaParts.push("id " + (item.gmail_message_id || "?"));
+                } else {
+                    metaParts.push("source: " + (item.source || "local"));
+                }
+                detail.appendChild(el("div", {
+                    class: "meta",
+                    text: metaParts.join(" · "),
+                }));
+
+                if (isGmail) {
+                    const link = el("div", { class: "section" });
+                    if (typeof item.gmail_url === "string" && item.gmail_url.indexOf("https://mail.google.com/") === 0) {
+                        const anchor = el("a", {
+                            class: "link-out",
+                            href: item.gmail_url,
+                            target: "_blank",
+                            rel: "noopener noreferrer",
+                            text: "Open in Gmail (read-only)",
+                        });
+                        link.appendChild(anchor);
+                    } else {
+                        link.appendChild(el("span", { class: "muted", text: "Gmail link unavailable." }));
+                    }
+                    detail.appendChild(link);
+                }
+
+                // Cached body text: inserted as text, never as HTML.
+                const bodySection = el("div", { class: "section" });
+                bodySection.appendChild(el("h4", { text: "Cached message text (inert)" }));
+                if (item.body_preview) {
+                    bodySection.appendChild(el("pre", { class: "body-preview", text: item.body_preview }));
+                } else {
+                    bodySection.appendChild(el("div", {
+                        class: "notice",
+                        text: isGmail
+                            ? "Body cache expired or unavailable. The message is kept by ID only; open it in Gmail to read it."
+                            : "Body cache expired or unavailable. The message is kept by ID only; re-run emailman ingest to restore cached text.",
+                    }));
+                }
+                if (item.truncated) {
+                    bodySection.appendChild(el("div", { class: "notice", text: "This message text was truncated when cached." }));
+                }
+                if (item.unsupported_content) {
+                    bodySection.appendChild(el("div", { class: "notice", text: "Some content was unsupported and not cached. Attachments are not processed." }));
+                }
+                detail.appendChild(bodySection);
+
+                // Proposal section.
+                const proposalSection = el("div", { class: "section" });
+                proposalSection.appendChild(el("h4", { text: "Current suggestion" }));
+                if (item.proposal) {
+                    const line = el("div");
+                    line.appendChild(statusBadge(
+                        item.proposal.abstain ? "Abstained" : "Proposed",
+                        item.proposal.abstain ? "uncertain" : "proposed"
+                    ));
+                    line.appendChild(el("span", {
+                        text: " " + ((item.proposal.label_ids && item.proposal.label_ids.length)
+                            ? item.proposal.label_ids.map(labelName).join(", ")
+                            : "(no labels)"),
+                    }));
+                    proposalSection.appendChild(line);
+                    if (item.proposal.reason) {
+                        proposalSection.appendChild(el("div", { class: "muted", text: item.proposal.reason }));
+                    }
+                } else {
+                    proposalSection.appendChild(el("div", { class: "notice", text: "No suggestion is available for this message. You can still choose labels manually." }));
+                }
+                detail.appendChild(proposalSection);
+
+                // Saved choice section, kept separate from the proposal above.
+                const decisionSection = el("div", { class: "section" });
+                decisionSection.appendChild(el("h4", { text: "Your saved choice" }));
+                if (item.decision) {
+                    const line = el("div");
+                    line.appendChild(statusBadge(item.decision.status, item.decision.status));
+                    const ids = item.decision.label_ids || [];
+                    line.appendChild(el("span", {
+                        text: " " + (ids.length ? ids.map(labelName).join(", ") : "(no labels)"),
+                    }));
+                    decisionSection.appendChild(line);
+                    if (item.newer_proposal_than_decision) {
+                        decisionSection.appendChild(el("div", { class: "notice", text: "A newer suggestion is available above. Your saved choice is unchanged." }));
+                    }
+                } else {
+                    decisionSection.appendChild(el("div", { class: "muted", text: "Not reviewed yet. Use “Save choice locally” below." }));
+                }
+                detail.appendChild(decisionSection);
+
+                // Editor.
+                const editor = el("div", { class: "section" });
+                editor.appendChild(el("h4", { text: "Choose labels (saved locally only)" }));
+                const choices = el("div", { class: "label-choices" });
+                const selected = new Set((item.decision ? item.decision.label_ids : (item.proposal ? item.proposal.label_ids : [])) || []);
+                const configured = new Set(state.labels.map(function (label) { return label.id; }));
+                state.labels.forEach(function (label) {
+                    const wrap = el("label", { class: "label-choice" });
+                    const checkbox = el("input", { type: "checkbox", value: label.id, "data-label": label.id });
+                    checkbox.checked = selected.has(label.id);
+                    wrap.appendChild(checkbox);
+                    wrap.appendChild(el("span", { text: label.name }));
+                    choices.appendChild(wrap);
+                });
+                // Show labels that are no longer in the config but are either on
+                // the saved choice (checked) or only on the current proposal
+                // (unchecked, opt-in). Re-saving keeps the checked ones.
+                const proposalIds = new Set(
+                    (item.decision && item.proposal ? item.proposal.label_ids : []) || []
+                );
+                const staleIds = new Set();
+                selected.forEach(function (id) { if (!configured.has(id)) { staleIds.add(id); } });
+                proposalIds.forEach(function (id) { if (!configured.has(id)) { staleIds.add(id); } });
+                staleIds.forEach(function (id) {
+                    const wrap = el("label", {
+                        class: "label-choice stale",
+                        title: "Not in your current label config. Uncheck to drop it, or check to keep it.",
+                    });
+                    const checkbox = el("input", { type: "checkbox", value: id, "data-label": id });
+                    checkbox.checked = selected.has(id);
+                    wrap.appendChild(checkbox);
+                    wrap.appendChild(el("span", { text: id + " (no longer configured)" }));
+                    choices.appendChild(wrap);
+                });
+                editor.appendChild(choices);
+
+                const acceptDisabled = item.suggestion_state !== "proposed";
+                const actions = el("div", { class: "actions" });
+                const acceptBtn = el("button", { text: "Accept suggestion" });
+                acceptBtn.disabled = acceptDisabled;
+                if (acceptDisabled) {
+                    acceptBtn.title = "Accept is disabled for uncertain or missing suggestions; correct instead.";
+                }
+                acceptBtn.addEventListener("click", function () { saveDecision("accepted"); });
+                const correctBtn = el("button", { class: "secondary", text: "Save choice locally" });
+                correctBtn.addEventListener("click", function () { saveDecision("corrected", collectChecked()); });
+                const skipBtn = el("button", { class: "secondary", text: "Skip" });
+                skipBtn.addEventListener("click", function () { saveDecision("skipped"); });
+                const reopenBtn = el("button", { class: "secondary", text: "Reopen / clear" });
+                reopenBtn.addEventListener("click", function () { saveDecision("pending"); });
+                actions.appendChild(acceptBtn);
+                actions.appendChild(correctBtn);
+                actions.appendChild(skipBtn);
+                actions.appendChild(reopenBtn);
+                editor.appendChild(actions);
+                editor.appendChild(el("div", { class: "toast", id: "decision-toast" }));
+                detail.appendChild(editor);
+            }
+
+            function collectChecked() {
+                return Array.from(document.querySelectorAll("#review-detail .label-choice input:checked"))
+                    .map(function (input) { return input.getAttribute("data-label"); });
+            }
+
+            // Saved labels that are no longer configured and are about to be dropped.
+            function droppedStaleLabels(nextLabels) {
+                if (!state.current || !state.current.decision) { return []; }
+                const configured = new Set(state.labels.map(function (label) { return label.id; }));
+                const next = new Set(nextLabels);
+                return (state.current.decision.label_ids || []).filter(function (id) {
+                    return !configured.has(id) && !next.has(id);
+                });
+            }
+
+            async function selectItem(messageId) {
+                state.currentId = messageId;
+                renderList(state.items);
+                try {
+                    const data = await api("/api/review/item?message_id=" + encodeURIComponent(messageId));
+                    renderDetail(data);
+                } catch (e) {
+                    const detail = document.getElementById("review-detail");
+                    detail.replaceChildren(el("div", { class: "notice", text: "Failed to load message: " + e.message }));
+                }
+            }
+
+            async function saveDecision(status, labelIds) {
+                if (!state.current) { return; }
+                const messageId = state.current.message_id;
+                let toast = document.getElementById("decision-toast");
+                if (toast) { toast.textContent = ""; toast.className = "toast"; }
+
+                // Warn before dropping a saved label that is no longer configured.
+                // Accept replaces the choice with the proposal's labels.
+                let dropped = [];
+                if (status === "corrected") {
+                    dropped = droppedStaleLabels(labelIds || []);
+                } else if (status === "accepted") {
+                    const proposalIds = (state.current.proposal && state.current.proposal.label_ids) || [];
+                    dropped = droppedStaleLabels(proposalIds);
+                }
+                if (dropped.length && !window.confirm(
+                    "This will drop saved label(s) no longer in your config: " + dropped.join(", ") + "?"
+                )) {
+                    return;
+                }
+
+                try {
+                    await api("/api/decisions", {
+                        method: "POST",
+                        body: { message_id: messageId, status: status, label_ids: labelIds || [] },
+                    });
+                    await Promise.all([loadReview(), loadStatus()]);
+                    await selectItem(messageId);
+                    toast = document.getElementById("decision-toast");
+                    if (toast) { toast.textContent = "Saved locally."; toast.className = "toast ok"; }
+                } catch (e) {
+                    toast = document.getElementById("decision-toast");
+                    if (toast) { toast.textContent = "Error: " + e.message; toast.className = "toast err"; }
+                }
+            }
+
+            function exportUrl(format) {
+                const include = document.getElementById("export-skipped").checked ? "1" : "0";
+                return "/api/export?format=" + encodeURIComponent(format) + "&include_skipped=" + include;
+            }
+
+            function exportChoices(format) {
+                window.location.href = exportUrl(format);
+            }
+
+            function init() {
+                document.getElementById("refresh-btn").addEventListener("click", function () { loadReview(); loadStatus(); });
+                document.getElementById("filter-status").addEventListener("change", resetAndLoad);
+                document.getElementById("filter-state").addEventListener("change", resetAndLoad);
+                document.getElementById("filter-label").addEventListener("change", resetAndLoad);
+                document.getElementById("filter-disagrees").addEventListener("change", resetAndLoad);
+                document.getElementById("prev-page").addEventListener("click", function () {
+                    state.offset = Math.max(0, state.offset - state.limit);
+                    loadReview();
+                });
+                document.getElementById("next-page").addEventListener("click", function () {
+                    state.offset += state.limit;
+                    loadReview();
+                });
+                document.getElementById("export-csv").addEventListener("click", function () { exportChoices("csv"); });
+                document.getElementById("export-json").addEventListener("click", function () { exportChoices("json"); });
+                document.getElementById("labels-toggle").addEventListener("click", function () {
+                    const panel = document.getElementById("labels-panel");
+                    panel.hidden = !panel.hidden;
+                    if (!panel.hidden) { renderLabelPanel(); }
+                });
+                document.getElementById("label-save").addEventListener("click", saveLabel);
+                document.getElementById("label-cancel").addEventListener("click", resetLabelForm);
+
+                loadStatus();
+                loadLabels().then(function () { loadReview(); loadConflicts(); });
+                setInterval(loadStatus, 5000);
+            }
+
+            document.addEventListener("DOMContentLoaded", init);
+        })();
+    </script>
+</body>
+</html>
