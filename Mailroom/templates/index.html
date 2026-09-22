@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token }}">
-    <title>EmailMan - Review</title>
+    <title>Mailroom - Review</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -134,7 +134,7 @@
 </head>
 <body>
     <header>
-        <h1>EmailMan</h1>
+        <h1>Mailroom</h1>
         <p>Classify local mail, review and correct suggestions, and export decisions — all on this machine. Gmail sync is optional; nothing here changes Gmail.</p>
     </header>
 
@@ -696,7 +696,7 @@
                         class: "notice",
                         text: isGmail
                             ? "Body cache expired or unavailable. The message is kept by ID only; open it in Gmail to read it."
-                            : "Body cache expired or unavailable. The message is kept by ID only; re-run emailman ingest to restore cached text.",
+                            : "Body cache expired or unavailable. The message is kept by ID only; re-run mailroom ingest to restore cached text.",
                     }));
                 }
                 if (item.truncated) {

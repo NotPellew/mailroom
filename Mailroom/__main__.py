@@ -1,0 +1,6 @@
+"""Mailroom CLI entry point."""
+
+from Mailroom.cli import main
+
+if __name__ == "__main__":
+    main()

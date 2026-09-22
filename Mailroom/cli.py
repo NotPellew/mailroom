@@ -1,4 +1,4 @@
-"""Command-line interface for EmailMan."""
+"""Command-line interface for Mailroom."""
 
 import sys
 import json
@@ -19,8 +19,8 @@ def create_cli_parser():
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="emailman",
-        description="EmailMan - local-first mail label suggestion, review, and export (Gmail sync optional)",
+        prog="mailroom",
+        description="Mailroom - local-first mail label suggestion, review, and export (Gmail sync optional)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Local-first workflow (no Gmail account needed):
@@ -50,7 +50,7 @@ Optional Gmail sync (needs OAuth credentials and the [gmail] extra):
     parser.add_argument(
         "--config",
         default=None,
-        help="Path to configuration file (default: per-user EmailMan dir)",
+        help="Path to configuration file (default: per-user Mailroom dir)",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
@@ -131,7 +131,7 @@ Optional Gmail sync (needs OAuth credentials and the [gmail] extra):
     auth_parser.add_argument("--reauth", action="store_true", help="Force reauthentication even if a token exists")
 
     # scan
-    from EmailMan.gmail import DEFAULT_GMAIL_QUERY
+    from Mailroom.gmail import DEFAULT_GMAIL_QUERY
 
     scan_parser = subparsers.add_parser(
         "scan", help="Optional Gmail sync: fetch a bounded Gmail sample and store messages"
@@ -340,7 +340,7 @@ def init_db(args, config):
         args: Parsed arguments
         config: Configuration object
     """
-    from EmailMan import db
+    from Mailroom import db
 
     try:
         db_obj = db.DB(config.database_path)
@@ -354,7 +354,7 @@ def init_db(args, config):
 
 def ingest_cmd(args, config) -> int:
     """Ingest local .eml files or directory into SQLite."""
-    from EmailMan import db, ingest
+    from Mailroom import db, ingest
 
     path = Path(args.path)
     if not path.exists():
@@ -390,7 +390,7 @@ def fix_schema(args, config):
         args: Parsed arguments
         config: Configuration object
     """
-    from EmailMan import db
+    from Mailroom import db
 
     try:
         db_obj = db.DB(config.database_path)
@@ -409,7 +409,7 @@ def reset_db(args, config):
         args: Parsed arguments
         config: Configuration object
     """
-    from EmailMan import db
+    from Mailroom import db
 
     db_path = Path(config.database_path)
     if db_path.exists():
@@ -430,7 +430,7 @@ def clear_cache(args, config):
         args: Parsed arguments
         config: Configuration object
     """
-    from EmailMan import db
+    from Mailroom import db
 
     try:
         db_obj = db.DB(config.database_path)
@@ -455,9 +455,9 @@ def run_server(args, config):
         args: Parsed arguments
         config: Configuration object
     """
-    from EmailMan import app
+    from Mailroom import app
 
-    print(f"Starting EmailMan review server on {args.host}:{args.port}")
+    print(f"Starting Mailroom review server on {args.host}:{args.port}")
     try:
         app.run_review_server(config, host=args.host, port=args.port)
         return 0
@@ -470,14 +470,14 @@ def doctor_cmd(args, config) -> int:
     """Check environment health: loopback accessibility, backend availability, and database status."""
     import platform
     from pathlib import Path
-    from EmailMan.config import is_loopback_url
-    from EmailMan.classification import probe_model_endpoint, PROVIDER_OLLAMA
+    from Mailroom.config import is_loopback_url
+    from Mailroom.classification import probe_model_endpoint, PROVIDER_OLLAMA
 
     strict = bool(getattr(args, "strict", False))
     has_issues = False
     has_warnings = False
 
-    print("EmailMan Environment Doctor")
+    print("Mailroom Environment Doctor")
     print("=" * 60)
 
     # 1. Python & Core Environment
@@ -486,11 +486,11 @@ def doctor_cmd(args, config) -> int:
     if (major, minor) >= (3, 12):
         print(f"[✓] Python: {py_version} (supported >= 3.12)")
     else:
-        print(f"[!] Python: {py_version} (WARNING: EmailMan requires Python >= 3.12)")
+        print(f"[!] Python: {py_version} (WARNING: Mailroom requires Python >= 3.12)")
         has_issues = True
 
     # 2. Gmail Integration (Optional Dependencies)
-    from EmailMan.gmail import check_gmail_dependencies
+    from Mailroom.gmail import check_gmail_dependencies
     gmail_ok, missing_gmail_deps = check_gmail_dependencies()
     if gmail_ok:
         print("[✓] Gmail dependencies: installed (keyring and Google OAuth libraries ready)")
@@ -498,7 +498,7 @@ def doctor_cmd(args, config) -> int:
         missing_str = ", ".join(missing_gmail_deps)
         print(f"[i] Gmail dependencies: not installed (optional, missing: {missing_str})")
         print("    Core local classification and review work offline.")
-        print("    To enable Gmail sync, install: pip install 'emailman[gmail]'")
+        print("    To enable Gmail sync, install: pip install 'mailroom[gmail]'")
         if strict:
             has_warnings = True
 
@@ -547,12 +547,12 @@ def doctor_cmd(args, config) -> int:
                 dec_count = cursor.fetchone()["c"]
             conn.close()
 
-            from EmailMan.db import DB
+            from Mailroom.db import DB
 
             if current_ver >= DB.SCHEMA_VERSION:
                 print(f"[✓] Database: {db_path} (Schema v{current_ver}, {msg_count} messages, {dec_count} reviewed decisions)")
             else:
-                print(f"[!] Database: {db_path} (Schema v{current_ver} is outdated; run 'emailman fix-schema')")
+                print(f"[!] Database: {db_path} (Schema v{current_ver} is outdated; run 'mailroom fix-schema')")
                 has_issues = True
         except Exception as e:
             print(f"[!] Database: {db_path} (Error inspecting database: {e})")
@@ -563,7 +563,7 @@ def doctor_cmd(args, config) -> int:
     # 5. Backend Connectivity & Model Presence
     if not is_loopback_url(endpoint):
         print(f"[!] Backend endpoint: '{endpoint}' is not a loopback URL!")
-        print("    EmailMan requires loopback endpoints (127.0.0.1 or localhost) to prevent leaking email data.")
+        print("    Mailroom requires loopback endpoints (127.0.0.1 or localhost) to prevent leaking email data.")
         has_issues = True
     else:
         timeout = min(getattr(config, "timeout", 30.0), 5.0)
@@ -620,7 +620,7 @@ def create_config_cmd(args):
     Args:
         args: Parsed arguments
     """
-    from EmailMan.config import Config, default_app_dir
+    from Mailroom.config import Config, default_app_dir
 
     if args.config:
         target_path = Path(args.config).resolve()
@@ -641,33 +641,33 @@ def create_config_cmd(args):
     print(
         f"Selected backend ({profile} profile): {profile_info['provider']} "
         f"{profile_info['id']} on {profile_info['endpoint']} "
-        "(verify with: python -m EmailMan doctor)."
+        "(verify with: python -m Mailroom doctor)."
     )
     if profile != "tabby":
         print("For TabbyAPI use --profile tabby.")
     print("\nNext steps (local-first; no Gmail account needed):")
-    print("1. Run: python -m EmailMan init-db")
-    print("2. Run: python -m EmailMan ingest <path to .eml file or folder>")
-    print("3. Run: python -m EmailMan classify --limit 10")
-    print("4. Run: python -m EmailMan review   (http://127.0.0.1:5000)")
-    print("5. Run: python -m EmailMan export --format csv --output choices.csv")
+    print("1. Run: python -m Mailroom init-db")
+    print("2. Run: python -m Mailroom ingest <path to .eml file or folder>")
+    print("3. Run: python -m Mailroom classify --limit 10")
+    print("4. Run: python -m Mailroom review   (http://127.0.0.1:5000)")
+    print("5. Run: python -m Mailroom export --format csv --output choices.csv")
     print("\nOptional: mirror labels in Gmail")
     print("- Save a Desktop OAuth client JSON as credentials.json in this directory")
-    print("- Run: python -m EmailMan auth")
-    print("- Run: python -m EmailMan scan")
-    print("- Run: python -m EmailMan apply-labels --apply   (dry run without --apply)")
+    print("- Run: python -m Mailroom auth")
+    print("- Run: python -m Mailroom scan")
+    print("- Run: python -m Mailroom apply-labels --apply   (dry run without --apply)")
     return 0
 
 
 def auth_cmd(args, config):
     """Authenticate with Gmail (read-only)."""
-    from EmailMan import gmail as gmail_module
+    from Mailroom import gmail as gmail_module
 
     try:
         email = gmail_module.authenticate(config, reauth=bool(getattr(args, "reauth", False)))
         print(f"Gmail authentication complete for {email}.")
         print("Stored credentials are protected by the OS (DPAPI on Windows).")
-        print("Run 'python -m EmailMan scan' to fetch a bounded inbox sample.")
+        print("Run 'python -m Mailroom scan' to fetch a bounded inbox sample.")
         return 0
     except gmail_module.GmailError as e:
         print(f"Gmail auth error: {e}", file=sys.stderr)
@@ -691,8 +691,8 @@ def _run_inference_worker(target, error_holder, *args, **kwargs):
 
 def _suggest_during_scan_worker(work, client, batch_size, result_holder, db_path):
     """Run taxonomy batches as mail arrives. Never logs bodies."""
-    from EmailMan import db as db_module
-    from EmailMan import taxonomy as taxonomy_module
+    from Mailroom import db as db_module
+    from Mailroom import taxonomy as taxonomy_module
 
     def _progress(done, n_labels):
         print(f"taxonomy batch {done} ({n_labels} draft labels)", flush=True)
@@ -724,8 +724,8 @@ def _suggest_during_scan_worker(work, client, batch_size, result_holder, db_path
 
 def _classify_during_scan_worker(work, db_path, config, model_endpoint, stats):
     """Classify queued scan messages on a worker thread. Never logs bodies."""
-    from EmailMan import classification as classify_module
-    from EmailMan import db as db_module
+    from Mailroom import classification as classify_module
+    from Mailroom import db as db_module
 
     label_ids = [label["id"] for label in config.labels]
     labels = config.labels
@@ -799,9 +799,9 @@ def scan_cmd(args, config):
     """
     from datetime import datetime, timezone
 
-    from EmailMan import gmail as gmail_module
-    from EmailMan import db as db_module
-    from EmailMan.config import is_loopback_url
+    from Mailroom import gmail as gmail_module
+    from Mailroom import db as db_module
+    from Mailroom.config import is_loopback_url
 
     do_classify = bool(getattr(args, "classify", False))
     do_suggest = bool(getattr(args, "suggest_labels", False))
@@ -832,9 +832,9 @@ def scan_cmd(args, config):
     except gmail_module.GmailError as e:
         print(f"Gmail error: {e}", file=sys.stderr)
         if "credentials" in str(e).lower():
-            print("Run: python -m EmailMan auth", file=sys.stderr)
+            print("Run: python -m Mailroom auth", file=sys.stderr)
         print(
-            "No Gmail? Ingest local .eml files instead: python -m EmailMan ingest <path>",
+            "No Gmail? Ingest local .eml files instead: python -m Mailroom ingest <path>",
             file=sys.stderr,
         )
         return 1
@@ -900,12 +900,12 @@ def scan_cmd(args, config):
                 model_endpoint,
                 classify_stats,
             ),
-            name="emailman-classify",
+            name="mailroom-classify",
             daemon=True,
         )
         worker.start()
     elif do_suggest:
-        from EmailMan.classification import TabbyClient
+        from Mailroom.classification import TabbyClient
 
         work = queue.Queue(maxsize=8)
         batch_size = max(1, min(int(getattr(args, "batch_size", 8) or 8), 20))
@@ -926,7 +926,7 @@ def scan_cmd(args, config):
                 suggest_holder,
                 config.database_path,
             ),
-            name="emailman-suggest-labels",
+            name="mailroom-suggest-labels",
             daemon=True,
         )
         worker.start()
@@ -1049,7 +1049,7 @@ def scan_cmd(args, config):
             f"(failed {classify_stats['failed']}, skipped {classify_stats['skipped']})."
         )
     if do_suggest:
-        from EmailMan import taxonomy as taxonomy_module
+        from Mailroom import taxonomy as taxonomy_module
 
         result = suggest_holder.get("result") or {
             "labels": [],
@@ -1068,7 +1068,7 @@ def scan_cmd(args, config):
             "labels": result.get("labels") or [],
             "notes": (
                 "Draft vocabulary only. Edit this file, then decide whether to use it "
-                "as EmailMan config. Does not create or apply Gmail labels."
+                "as Mailroom config. Does not create or apply Gmail labels."
             ),
         }
         try:
@@ -1099,7 +1099,7 @@ def scan_cmd(args, config):
 
 def _direct_email_fields(args) -> dict[str, str]:
     """Return subject/sender/sender_email/body for --text/--file/--stdin."""
-    from EmailMan import ingest as ingest_module
+    from Mailroom import ingest as ingest_module
 
     if getattr(args, "text", None) is not None:
         return {"subject": "", "sender": "", "sender_email": "", "body": args.text}
@@ -1120,8 +1120,8 @@ def _direct_email_fields(args) -> dict[str, str]:
 
 def _classify_direct_cmd(args, config) -> int:
     """Classify --text/--file/--stdin and print one JSON object to stdout."""
-    from EmailMan.classification import ClassificationError, proposal_payload
-    from EmailMan.classifier import EmailClassifier
+    from Mailroom.classification import ClassificationError, proposal_payload
+    from Mailroom.classifier import EmailClassifier
 
     try:
         fields = _direct_email_fields(args)
@@ -1160,9 +1160,9 @@ def classify_cmd(args, config):
         args: Parsed arguments
         config: Configuration object
     """
-    from EmailMan import classification as classify_module
-    from EmailMan import db as db_module
-    from EmailMan.config import is_loopback_url
+    from Mailroom import classification as classify_module
+    from Mailroom import db as db_module
+    from Mailroom.config import is_loopback_url
 
     direct_mode = (
         getattr(args, "text", None) is not None
@@ -1328,8 +1328,8 @@ def export_cmd(args, config):
         args: Parsed arguments
         config: Configuration object
     """
-    from EmailMan import db as db_module
-    from EmailMan import export as export_module
+    from Mailroom import db as db_module
+    from Mailroom import export as export_module
 
     db_obj = db_module.DB(config.database_path)
     try:
@@ -1374,10 +1374,10 @@ def suggest_labels_cmd(args, config):
     Repeatable: each run reads the current cache and writes a new timestamped
     report. Previous reports are kept. Gmail and config.json are not modified.
     """
-    from EmailMan import db as db_module
-    from EmailMan.classification import ClassificationError, TabbyClient
-    from EmailMan.config import is_loopback_url
-    from EmailMan import taxonomy as taxonomy_module
+    from Mailroom import db as db_module
+    from Mailroom.classification import ClassificationError, TabbyClient
+    from Mailroom.config import is_loopback_url
+    from Mailroom import taxonomy as taxonomy_module
 
     if not is_loopback_url(config.model_endpoint):
         print(
@@ -1411,7 +1411,7 @@ def suggest_labels_cmd(args, config):
             offset += len(chunk)
             del chunk
         if stream.message_count == 0:
-            print("No cached messages with body text. Run: python -m EmailMan scan --limit 1000")
+            print("No cached messages with body text. Run: python -m Mailroom scan --limit 1000")
             return 1
         print(
             f"Proposing labels from {stream.message_count} cached message(s) "
@@ -1436,7 +1436,7 @@ def suggest_labels_cmd(args, config):
         "labels": result["labels"],
         "notes": (
             "Draft vocabulary only. Edit this file, then decide whether to use it "
-            "as EmailMan config. Does not create or apply Gmail labels."
+            "as Mailroom config. Does not create or apply Gmail labels."
         ),
     }
 
@@ -1461,10 +1461,10 @@ def suggest_labels_cmd(args, config):
 
 def pilot_report_cmd(args, config):
     """Compute Step 5 metrics from human decisions; optional local-model prose."""
-    from EmailMan import db as db_module
-    from EmailMan import pilot as pilot_module
-    from EmailMan.classification import TabbyClient
-    from EmailMan.config import is_loopback_url
+    from Mailroom import db as db_module
+    from Mailroom import pilot as pilot_module
+    from Mailroom.classification import TabbyClient
+    from Mailroom.config import is_loopback_url
 
     db_obj = db_module.DB(config.database_path)
     try:
@@ -1531,9 +1531,9 @@ def sync_review_cmd(args, config):
     """
     import shutil
 
-    from EmailMan import db as db_module
-    from EmailMan import export as export_module
-    from EmailMan import pilot as pilot_module
+    from Mailroom import db as db_module
+    from Mailroom import export as export_module
+    from Mailroom import pilot as pilot_module
 
     data_dir = Path(config.config_dir)
     db_obj = db_module.DB(config.database_path)
@@ -1541,7 +1541,7 @@ def sync_review_cmd(args, config):
         decisions = db_obj.list_decisions_for_export(include_skipped=True)
         names = {lab["id"]: lab["name"] for lab in config.labels}
         records = export_module.build_export_records(decisions, names)
-        export_path = data_dir / "emailman-export-latest.json"
+        export_path = data_dir / "mailroom-export-latest.json"
         export_path.write_text(export_module.records_to_json(records), encoding="utf-8")
         print(f"Exported {len(records)} decision(s) to {export_path}")
 
@@ -1557,9 +1557,9 @@ def sync_review_cmd(args, config):
                 f"Conflicts: {conflicts['n_groups']} group(s) / {conflicts['n_messages']} messages."
             )
             print("Open the review UI and pick one label set per group (do not edit the JSON):")
-            print("  python -m EmailMan review")
+            print("  python -m Mailroom review")
             print("  http://127.0.0.1:5000")
-            print("Then run: python -m EmailMan sync-review")
+            print("Then run: python -m Mailroom sync-review")
             return 2
 
         backup = Path(str(config.config_path) + ".bak-sync-review")
@@ -1599,8 +1599,8 @@ def _write_apply_plan_csv(path, planned, config) -> None:
 
 def apply_labels_cmd(args, config):
     """Create and apply reviewed labels in Gmail. Dry-run unless --apply."""
-    from EmailMan import db as db_module
-    from EmailMan import gmail as gmail_module
+    from Mailroom import db as db_module
+    from Mailroom import gmail as gmail_module
 
     do_apply = bool(getattr(args, "apply", False))
     known = {lab["id"] for lab in config.labels}
@@ -1649,7 +1649,7 @@ def apply_labels_cmd(args, config):
     if gmail_module.GMAIL_MODIFY_SCOPE not in scopes:
         print(
             "Stored credentials lack the gmail.modify scope. Re-run:\n"
-            "  python -m EmailMan auth --reauth",
+            "  python -m Mailroom auth --reauth",
             file=sys.stderr,
         )
         return 1
@@ -1688,12 +1688,12 @@ def apply_labels_cmd(args, config):
 def sync_labels_cmd(args, config):
     """Read Gmail labels back for applied mail; record user edits as decisions.
 
-    A message whose Gmail labels still match what EmailMan applied is left as
+    A message whose Gmail labels still match what Mailroom applied is left as
     accepted. Any difference (including removing every label) is recorded as a
     corrected decision, and the snapshot is updated so the next run is quiet.
     """
-    from EmailMan import db as db_module
-    from EmailMan import gmail as gmail_module
+    from Mailroom import db as db_module
+    from Mailroom import gmail as gmail_module
 
     known = {lab["id"] for lab in config.labels}
     try:
@@ -1751,7 +1751,7 @@ def main():
         sys.exit(create_config_cmd(args))
 
     # Load configuration
-    from EmailMan.config import Config, ConfigError
+    from Mailroom.config import Config, ConfigError
 
     try:
         config = Config(args.config)

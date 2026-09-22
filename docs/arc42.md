@@ -1,6 +1,6 @@
-# EmailMan architecture
+# Mailroom architecture
 
-EmailMan is an installable Python application for suggesting, reviewing, and correcting labels for local mail (and, optionally, Gmail), then exporting decisions using local LLM inference. The default workflow needs no Gmail account or OAuth credentials. All inference runs on loopback (Ollama, TabbyAPI, OpenAI-compatible); Gmail access is strictly bounded to reading and label manipulation (no archive, delete, trash, spam, or send). Email bodies are treated as untrusted data with cryptographic nonce fencing, and review state is persisted locally in SQLite. The workflow supports offline evaluation, CSV/JSON export, and bidirectional label synchronization. See README for CLI usage and environment setup.
+Mailroom is an installable Python application for suggesting, reviewing, and correcting labels for local mail (and, optionally, Gmail), then exporting decisions using local LLM inference. The default workflow needs no Gmail account or OAuth credentials. All inference runs on loopback (Ollama, TabbyAPI, OpenAI-compatible); Gmail access is strictly bounded to reading and label manipulation (no archive, delete, trash, spam, or send). Email bodies are treated as untrusted data with cryptographic nonce fencing, and review state is persisted locally in SQLite. The workflow supports offline evaluation, CSV/JSON export, and bidirectional label synchronization. See README for CLI usage and environment setup.
 
 ## 1. Introduction and goals
 
@@ -24,13 +24,13 @@ Key architectural goals:
 
 ## 3. Context and scope
 
-The user runs EmailMan on their local machine (Linux, macOS, or Windows).
+The user runs Mailroom on their local machine (Linux, macOS, or Windows).
 
 ```mermaid
 flowchart LR
-    User([User]) <--> CLI[EmailMan CLI]
+    User([User]) <--> CLI[Mailroom CLI]
     User([User]) <--> WebUI[Review Web UI\n127.0.0.1:5000]
-    CLI <--> DB[(SQLite State\nEmailMan.db)]
+    CLI <--> DB[(SQLite State\nMailroom.db)]
     WebUI <--> DB
     CLI <--> ModelEngine[Local LLM Backend\nOllama / TabbyAPI\n127.0.0.1]
     WebUI <--> ModelEngine
@@ -41,7 +41,7 @@ flowchart LR
 ### External Interfaces
 - **Gmail API:** Reads message headers and bodies via `messages.get`, queries message lists via `messages.list`, creates labels via `labels.create`, and modifies message labels via `messages.modify`.
 - **Local Model Backend:** Ollama (`http://127.0.0.1:11434`), TabbyAPI, or generic OpenAI-compatible endpoints on loopback.
-- **Local Storage:** SQLite database (`EmailMan.db`) and OS credential store (`keyring`).
+- **Local Storage:** SQLite database (`Mailroom.db`) and OS credential store (`keyring`).
 - **Web Browser:** User connects via loopback (`http://127.0.0.1:5000`) for the review interface.
 
 ### Scope Boundaries
@@ -61,31 +61,31 @@ flowchart LR
 
 | Responsibility | Boundary |
 | --- | --- |
-| CLI (`EmailMan.cli`) | User commands (`auth`, `scan`, `ingest`, `classify`, `review`, `export`, `apply-labels`, `sync-labels`, `doctor`, `create-config`), argument parsing, exit codes. |
-| Web Review UI (`EmailMan.routes`, `EmailMan.templates`) | Loopback Flask app, server-rendered HTML template, JSON APIs for review/decisions/conflicts and label-definition edits, CSRF and Host validation. |
-| Classification Engine (`EmailMan.classification`) | Local inference clients (Ollama, Tabby, OpenAI-compatible), endpoint auto-detection, nonce prompt construction, JSON output parsing, validation. |
-| Standalone Classification API (`EmailMan.classifier`) | High-level `EmailClassifier` facade over the classification engine; direct CLI (`--text`/`--file`/`--stdin`) and stateless `POST /api/classify` payloads with no database or Gmail dependency. |
-| Local Ingestion (`EmailMan.ingest`) | Recursive RFC 822 `.eml` parser, inert MIME extraction, deterministic message identification, batch SQLite ingestion without Gmail credentials. |
-| Local Persistence (`EmailMan.db`) | SQLite schema management (v1-v6), atomic transactions, WAL mode, decoupled message upserts, proposal tracking, decision records with label constraint validation, 7-day body cache expiry. |
-| Gmail Integration (`EmailMan.gmail`) | Desktop OAuth flow, OS keyring token management, bounded message fetching, RFC 2822 MIME decoding, label creation and modification. |
-| Security & Sanitization (`EmailMan.security`, `EmailMan.export`) | Loopback Host/Origin/Referer verification, CSRF token generation/check, CSV spreadsheet formula neutralization. |
-| Environment Diagnostics (`EmailMan.doctor`) | Non-destructive read-only health checks for Python runtime, configuration, database schema, loopback safety, backend availability, and optional dependencies. |
+| CLI (`Mailroom.cli`) | User commands (`auth`, `scan`, `ingest`, `classify`, `review`, `export`, `apply-labels`, `sync-labels`, `doctor`, `create-config`), argument parsing, exit codes. |
+| Web Review UI (`Mailroom.routes`, `Mailroom.templates`) | Loopback Flask app, server-rendered HTML template, JSON APIs for review/decisions/conflicts and label-definition edits, CSRF and Host validation. |
+| Classification Engine (`Mailroom.classification`) | Local inference clients (Ollama, Tabby, OpenAI-compatible), endpoint auto-detection, nonce prompt construction, JSON output parsing, validation. |
+| Standalone Classification API (`Mailroom.classifier`) | High-level `EmailClassifier` facade over the classification engine; direct CLI (`--text`/`--file`/`--stdin`) and stateless `POST /api/classify` payloads with no database or Gmail dependency. |
+| Local Ingestion (`Mailroom.ingest`) | Recursive RFC 822 `.eml` parser, inert MIME extraction, deterministic message identification, batch SQLite ingestion without Gmail credentials. |
+| Local Persistence (`Mailroom.db`) | SQLite schema management (v1-v6), atomic transactions, WAL mode, decoupled message upserts, proposal tracking, decision records with label constraint validation, 7-day body cache expiry. |
+| Gmail Integration (`Mailroom.gmail`) | Desktop OAuth flow, OS keyring token management, bounded message fetching, RFC 2822 MIME decoding, label creation and modification. |
+| Security & Sanitization (`Mailroom.security`, `Mailroom.export`) | Loopback Host/Origin/Referer verification, CSRF token generation/check, CSV spreadsheet formula neutralization. |
+| Environment Diagnostics (`Mailroom.doctor`) | Non-destructive read-only health checks for Python runtime, configuration, database schema, loopback safety, backend availability, and optional dependencies. |
 
 These are module boundaries within a single Python package, not distributed microservices.
 
 ## 6. Runtime view
 
-1. **Diagnostic & Configuration Check (`emailman doctor`):**
+1. **Diagnostic & Configuration Check (`mailroom doctor`):**
    Verifies local environment, configuration validity, database schema status, loopback safety, and model availability.
-2. **Ingestion (`emailman ingest` or `emailman scan`):**
+2. **Ingestion (`mailroom ingest` or `mailroom scan`):**
    The default local path is `ingest`, which loads local `.eml` files or directories into SQLite offline without requiring Gmail credentials. Optionally, `scan` connects to Gmail via OAuth, queries inbox with bounded limit (default 100), extracts MIME parts safely into inert plain text, flags truncation, and upserts messages into SQLite without disturbing existing decisions.
-3. **Classification (`emailman classify` or `scan --classify`):**
+3. **Classification (`mailroom classify` or `scan --classify`):**
    Probes loopback inference endpoint, constructs nonce-fenced prompt with label vocabulary, queries model for structured JSON, validates returned label IDs against allowed list, and records versioned proposals.
-4. **Human Review & Correction (`emailman review`):**
+4. **Human Review & Correction (`mailroom review`):**
    Opens local Flask web UI on loopback. User inspects proposals, reviews inert plain text body, filters by status/disagreements, and accepts, corrects, or skips suggestions. Decisions are saved atomically.
-5. **Local Export (`emailman export`):**
+5. **Local Export (`mailroom export`):**
    Emits reviewed choices as CSV or JSON with formula neutralization; email bodies and reasons are omitted.
-6. **Optional Label Synchronization (`emailman apply-labels --apply` / `sync-labels`):**
+6. **Optional Label Synchronization (`mailroom apply-labels --apply` / `sync-labels`):**
    Applies reviewed labels to Gmail messages and creates missing labels. `sync-labels` inspects Gmail messages to capture remote user edits back into local decisions.
 
 ## 7. Deployment view
@@ -93,7 +93,7 @@ These are module boundaries within a single Python package, not distributed micr
 - **Package:** Installable Python package configured via `pyproject.toml` (`pip install -e .` or `pip install '.[gmail]'`).
 - **Target OS:** Windows, Linux, and macOS.
 - **Target Runtime:** Python 3.12+.
-- **Data Storage:** Configuration file and SQLite database default to `%LOCALAPPDATA%\EmailMan` on Windows or `~/.config/emailman` on Linux/macOS. Overrideable via `--config`.
+- **Data Storage:** Configuration file and SQLite database default to `%LOCALAPPDATA%\Mailroom` on Windows or `~/.config/mailroom` on Linux/macOS. Overrideable via `--config`.
 - **Secrets:** OAuth client secrets and refresh tokens are stored in the OS credential store (Windows Credential Manager / DPAPI, Secret Service / Keyring on Linux, Keychain on macOS).
 - **Network Boundaries:**
   - Loopback only (`127.0.0.1`) for Flask review server and inference backends.
@@ -110,7 +110,7 @@ These are module boundaries within a single Python package, not distributed micr
 - **Persistence Constraint Enforcement:** `DB.save_decision` validates that all assigned label IDs belong to the active configured taxonomy, legacy aliases, or existing message context, rejecting unconfigured or malformed label IDs before SQLite commits.
 - **Idempotency & Decision Preservation:** Scanning is idempotent on `(account_id, gmail_message_id)`; local `.eml` ingest is idempotent on a namespaced id `{account_id}:local:{message_id}`, so an untrusted `Message-ID` header cannot collide with or impersonate a Gmail row. Human decisions are preserved across repeated scans and re-classifications. When a newer proposal exists after a decision was recorded, the review UI flags it for user attention rather than silently overwriting human intent.
 - **Decoupled Packaging & Graceful Degradation:** Core package requires only `flask` and `requests`. Heavy Google dependencies are optional under `[gmail]`. Diagnostic commands (`doctor`) and helpful CLI messages guide the user if optional dependencies are missing.
-- **Browser-Level Inertness Verification:** A dev-only `browser` extra (Playwright with bundled headless Chromium, never imported by `EmailMan/` runtime code) drives the real review page against a live loopback Flask server to assert in a real DOM that injected payloads execute nothing, the page issues no external requests, Gmail links match the exact expected URL, and the loopback security headers are present. The `browser`-marked suite is opt-in (`pytest -m browser`), skips by default, and hard-fails when `EMAILMAN_REQUIRE_BROWSER=1` and the browser is unavailable so CI cannot pass without executing it.
+- **Browser-Level Inertness Verification:** A dev-only `browser` extra (Playwright with bundled headless Chromium, never imported by `Mailroom/` runtime code) drives the real review page against a live loopback Flask server to assert in a real DOM that injected payloads execute nothing, the page issues no external requests, Gmail links match the exact expected URL, and the loopback security headers are present. The `browser`-marked suite is opt-in (`pytest -m browser`), skips by default, and hard-fails when `MAILROOM_REQUIRE_BROWSER=1` and the browser is unavailable so CI cannot pass without executing it.
 
 ## 9. Architecture decisions
 
@@ -142,7 +142,7 @@ These are module boundaries within a single Python package, not distributed micr
 | Model endpoint override | Non-loopback IP or external domain rejected immediately by CLI and API. |
 | Export reviewed decisions | CSV and JSON contain message IDs and labels; formula triggers neutralized; bodies and reasons omitted. |
 | Environment doctor inspection | Non-destructive read-only health report; zero schema mutations or cache expiry triggered. |
-| Missing optional Gmail dependencies | Actionable error message (`pip install 'emailman[gmail]'`); zero unhandled tracebacks. |
+| Missing optional Gmail dependencies | Actionable error message (`pip install 'mailroom[gmail]'`); zero unhandled tracebacks. |
 
 ## 11. Risks and open work
 
@@ -156,10 +156,10 @@ These are module boundaries within a single Python package, not distributed micr
   - **Issue #19:** *Add opt-in Jev (TypeSafe System One) classifier backend* (explicitly approved user-configured remote provider behind a consent gate; local loopback inference stays the default).
 - **Recently Implemented (Closed Issues):**
   - **Issue #23:** *Configure label definitions from the review web UI* (add/edit/remove labels from the review page via validated, atomic `config.json` writes with a rolling backup; deleting a label referenced by a saved decision is refused with a count; changes apply without a server restart).
-  - **Issue #12:** *Automated browser inertness and UI link verification suite* (opt-in `browser` extra with Playwright; headless Chromium drives the real review page to prove injected payloads stay inert text, zero external requests are made, Gmail links resolve to the exact expected URLs, and the loopback security headers are present; `EMAILMAN_REQUIRE_BROWSER=1` turns a missing browser into a CI failure rather than a skip).
+  - **Issue #12:** *Automated browser inertness and UI link verification suite* (opt-in `browser` extra with Playwright; headless Chromium drives the real review page to prove injected payloads stay inert text, zero external requests are made, Gmail links resolve to the exact expected URLs, and the loopback security headers are present; `MAILROOM_REQUIRE_BROWSER=1` turns a missing browser into a CI failure rather than a skip).
   - **Issue #5:** *Make Gmail write operations strictly optional and local-first by default* (local-only vs Gmail `mode` on `/api/status` from account rows, review-UI mode banner, local-first CLI help and `create-config` next steps, and Gmail writes remain behind `apply-labels --apply`).
-  - **Issue #4:** *Standalone classification API and library interface for BelegDock* (`EmailMan.classifier.EmailClassifier` facade plus direct CLI `--text`/`--file`/`--stdin` and stateless `POST /api/classify`; reuses the existing nonce fence, loopback enforcement, and label validation, with no database or Gmail dependency).
-  - **Issue #3:** *Decouple database and ingestion from Gmail API for offline testing* (schema v6 with source tracking, deterministic SHA256/RFC822 identity, and `emailman ingest`).
+  - **Issue #4:** *Standalone classification API and library interface for BelegDock* (`Mailroom.classifier.EmailClassifier` facade plus direct CLI `--text`/`--file`/`--stdin` and stateless `POST /api/classify`; reuses the existing nonce fence, loopback enforcement, and label validation, with no database or Gmail dependency).
+  - **Issue #3:** *Decouple database and ingestion from Gmail API for offline testing* (schema v6 with source tracking, deterministic SHA256/RFC822 identity, and `mailroom ingest`).
   - **Issue #14:** *Enforce label definition constraints in database decision layer* (`DB.save_decision` validates label IDs directly).
 
 ## 12. Glossary

@@ -1,4 +1,4 @@
-"""Flask routes for EmailMan review page."""
+"""Flask routes for Mailroom review page."""
 
 import sqlite3
 from pathlib import Path
@@ -7,8 +7,8 @@ from urllib.parse import quote
 
 from flask import Blueprint, render_template, jsonify, current_app, request, Response
 
-from EmailMan import security
-from EmailMan.config import ConfigError, is_loopback_url
+from Mailroom import security
+from Mailroom.config import ConfigError, is_loopback_url
 
 bp = Blueprint("main", __name__)
 
@@ -17,9 +17,9 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 def _get_config():
     """Return the loaded config, creating a default one if absent."""
-    config = current_app.config.get("EMAILMAN_CONFIG")
+    config = current_app.config.get("MAILROOM_CONFIG")
     if config is None:
-        from EmailMan.config import Config
+        from Mailroom.config import Config
 
         config = Config()
     return config
@@ -240,7 +240,7 @@ def api_delete_label(label_id):
     if len(remaining) == len(labels):
         return jsonify({"error": f"Unknown label id: {label_id}"}), 404
 
-    from EmailMan.db import DB
+    from Mailroom.db import DB
 
     db_obj = DB(config.database_path)
     try:
@@ -268,11 +268,11 @@ def api_delete_label(label_id):
 @bp.route("/api/status")
 def api_status():
     """API endpoint to get current status."""
-    config = current_app.config.get("EMAILMAN_CONFIG")
+    config = current_app.config.get("MAILROOM_CONFIG")
     if config:
         db_path = config.database_path
     else:
-        from EmailMan.config import Config
+        from Mailroom.config import Config
         db_path = Config().database_path
     return jsonify(get_status(db_path))
 
@@ -280,20 +280,20 @@ def api_status():
 @bp.route("/api/probe-model")
 def api_probe_model():
     """API endpoint to probe the model endpoint and get model info."""
-    config = current_app.config.get("EMAILMAN_CONFIG")
+    config = current_app.config.get("MAILROOM_CONFIG")
     if config:
         model_endpoint = config.model_endpoint
         timeout = config.timeout
         provider = config.model_provider
     else:
-        from EmailMan.config import Config
+        from Mailroom.config import Config
         cfg = Config()
         model_endpoint = cfg.model_endpoint
         timeout = cfg.timeout
         provider = cfg.model_provider
 
     try:
-        from EmailMan.classification import probe_model_endpoint
+        from Mailroom.classification import probe_model_endpoint
 
         result = probe_model_endpoint(model_endpoint, timeout=timeout, provider=provider)
         return jsonify(result)
@@ -303,8 +303,8 @@ def api_probe_model():
 
 def _classify_direct_payload(config, data):
     """Classify a direct subject/body payload without touching SQLite or Gmail."""
-    from EmailMan.classification import ClassificationError, proposal_payload
-    from EmailMan.classifier import EmailClassifier
+    from Mailroom.classification import ClassificationError, proposal_payload
+    from Mailroom.classifier import EmailClassifier
 
     for field in ("subject", "body", "sender", "sender_email"):
         value = data.get(field)
@@ -376,7 +376,7 @@ def api_classify():
         label_ids = [label["id"] for label in labels]
 
         # Load message from database
-        from EmailMan.db import DB
+        from Mailroom.db import DB
 
         db_obj = DB(config.database_path)
         try:
@@ -389,7 +389,7 @@ def api_classify():
                 return jsonify({"error": f"Message has no body text to classify: {message_id}"}), 400
 
             # Perform classification on an inert From/Subject/body block.
-            from EmailMan.classification import (
+            from Mailroom.classification import (
                 build_mail_block,
                 classify_message,
                 label_definition_version,
@@ -450,11 +450,11 @@ def api_proposals():
     Query parameters:
     - message_id: Message ID to get proposals for
     """
-    config = current_app.config.get("EMAILMAN_CONFIG")
+    config = current_app.config.get("MAILROOM_CONFIG")
     if config:
         db_path = config.database_path
     else:
-        from EmailMan.config import Config
+        from Mailroom.config import Config
         db_path = Config().database_path
 
     message_id = request.args.get("message_id")
@@ -513,11 +513,11 @@ def api_delete_proposals():
         "message_id": "account_id:gmail_message_id"
     }
     """
-    config = current_app.config.get("EMAILMAN_CONFIG")
+    config = current_app.config.get("MAILROOM_CONFIG")
     if config:
         db_path = config.database_path
     else:
-        from EmailMan.config import Config
+        from Mailroom.config import Config
         db_path = Config().database_path
 
     data = request.get_json()
@@ -665,7 +665,7 @@ def api_review_list():
         offset = 0
     offset = max(0, offset)
 
-    from EmailMan.db import DB
+    from Mailroom.db import DB
 
     db_obj = DB(config.database_path)
     try:
@@ -701,7 +701,7 @@ def api_review_item():
 
     config = _get_config()
 
-    from EmailMan.db import DB
+    from Mailroom.db import DB
 
     db_obj = DB(config.database_path)
     try:
@@ -748,7 +748,7 @@ def api_save_decision():
 
     allowed = _label_id_set(config)
 
-    from EmailMan.db import DB, DatabaseError
+    from Mailroom.db import DB, DatabaseError
 
     db_obj = DB(config.database_path, allowed_labels=allowed)
     try:
@@ -809,8 +809,8 @@ def api_save_decision():
 def api_conflicts():
     """Similar reviewed subjects that received different human label sets."""
     config = _get_config()
-    from EmailMan.db import DB
-    from EmailMan import pilot as pilot_module
+    from Mailroom.db import DB
+    from Mailroom import pilot as pilot_module
 
     db_obj = DB(config.database_path)
     try:
@@ -836,7 +836,7 @@ def api_resolve_conflict():
         return jsonify({"error": "label_ids must be a list of strings"}), 400
     allowed = _label_id_set(config)
 
-    from EmailMan.db import DB, DatabaseError
+    from Mailroom.db import DB, DatabaseError
 
     db_obj = DB(config.database_path, allowed_labels=allowed)
     updated = []
@@ -891,8 +891,8 @@ def api_export():
         "yes",
     )
 
-    from EmailMan import export as export_module
-    from EmailMan.db import DB
+    from Mailroom import export as export_module
+    from Mailroom.db import DB
 
     db_obj = DB(config.database_path)
     try:
@@ -909,13 +909,13 @@ def api_export():
         return Response(
             body,
             mimetype="application/json",
-            headers={"Content-Disposition": "attachment; filename=emailman-export.json"},
+            headers={"Content-Disposition": "attachment; filename=mailroom-export.json"},
         )
 
     body = export_module.records_to_csv(records)
     return Response(
         body,
         mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=emailman-export.csv"},
+        headers={"Content-Disposition": "attachment; filename=mailroom-export.csv"},
     )
 

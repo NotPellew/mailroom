@@ -9,10 +9,10 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import MagicMock, patch
 
-from EmailMan import cli as cli_module
-from EmailMan import config as config_module
-from EmailMan import db as db_module
-from EmailMan import taxonomy as taxonomy_module
+from Mailroom import cli as cli_module
+from Mailroom import config as config_module
+from Mailroom import db as db_module
+from Mailroom import taxonomy as taxonomy_module
 
 
 
@@ -146,7 +146,7 @@ class TestSuggestLabelsCli(unittest.TestCase):
             "message_count": 1,
             "batch_count": 1,
         }
-        with patch("EmailMan.taxonomy.TaxonomyStream.finish", return_value=fake):
+        with patch("Mailroom.taxonomy.TaxonomyStream.finish", return_value=fake):
             first = cli_module.suggest_labels_cmd(args, self.config)
             second = cli_module.suggest_labels_cmd(args, self.config)
         self.assertEqual(first, 0)
@@ -229,10 +229,10 @@ class TestScanSuggestLabels(unittest.TestCase):
             seen_during_fetch.append(list(calls))
             return [], "2026-01-01T00:00:00Z"
 
-        with patch("EmailMan.gmail.get_gmail_service", return_value=(MagicMock(), "user@example.com")), patch(
-            "EmailMan.gmail.fetch_account_and_labels", return_value=({}, [])
-        ), patch("EmailMan.gmail.fetch_bounded_sample", side_effect=fake_fetch), patch(
-            "EmailMan.classification.TabbyClient.complete_json", side_effect=complete_json
+        with patch("Mailroom.gmail.get_gmail_service", return_value=(MagicMock(), "user@example.com")), patch(
+            "Mailroom.gmail.fetch_account_and_labels", return_value=({}, [])
+        ), patch("Mailroom.gmail.fetch_bounded_sample", side_effect=fake_fetch), patch(
+            "Mailroom.classification.TabbyClient.complete_json", side_effect=complete_json
         ):
             args = self._args(["--suggest-labels", "--batch-size", "8"])
             code = cli_module.scan_cmd(args, self.config)
@@ -257,17 +257,17 @@ class TestScanSuggestLabels(unittest.TestCase):
                 on_message(_scan_decoded(i))
             return [], "t"
 
-        with patch("EmailMan.gmail.get_gmail_service", return_value=(MagicMock(), "user@example.com")), patch(
-            "EmailMan.gmail.fetch_account_and_labels", return_value=({}, [])
-        ), patch("EmailMan.gmail.fetch_bounded_sample", side_effect=fake_fetch), patch(
-            "EmailMan.classification.TabbyClient.complete_json", side_effect=complete_json
+        with patch("Mailroom.gmail.get_gmail_service", return_value=(MagicMock(), "user@example.com")), patch(
+            "Mailroom.gmail.fetch_account_and_labels", return_value=({}, [])
+        ), patch("Mailroom.gmail.fetch_bounded_sample", side_effect=fake_fetch), patch(
+            "Mailroom.classification.TabbyClient.complete_json", side_effect=complete_json
         ):
             args = self._args(["--suggest-labels", "--batch-size", "8"])
             self.assertEqual(cli_module.scan_cmd(args, self.config), 0)
         self.assertEqual(prompts, ["batch", "batch", "merge"])
 
     def test_quota_partial_fetch_still_writes_report(self):
-        from EmailMan.gmail import GmailError
+        from Mailroom.gmail import GmailError
 
         def complete_json(prompt, max_tokens=1500):
             return {
@@ -283,10 +283,10 @@ class TestScanSuggestLabels(unittest.TestCase):
 
         buf = io.StringIO()
         err = io.StringIO()
-        with patch("EmailMan.gmail.get_gmail_service", return_value=(MagicMock(), "user@example.com")), patch(
-            "EmailMan.gmail.fetch_account_and_labels", return_value=({}, [])
-        ), patch("EmailMan.gmail.fetch_bounded_sample", side_effect=fake_fetch), patch(
-            "EmailMan.classification.TabbyClient.complete_json", side_effect=complete_json
+        with patch("Mailroom.gmail.get_gmail_service", return_value=(MagicMock(), "user@example.com")), patch(
+            "Mailroom.gmail.fetch_account_and_labels", return_value=({}, [])
+        ), patch("Mailroom.gmail.fetch_bounded_sample", side_effect=fake_fetch), patch(
+            "Mailroom.classification.TabbyClient.complete_json", side_effect=complete_json
         ), redirect_stdout(buf), redirect_stderr(err):
             args = self._args(["--suggest-labels", "--batch-size", "8"])
             code = cli_module.scan_cmd(args, self.config)
@@ -321,10 +321,10 @@ class TestScanSuggestLabels(unittest.TestCase):
         db.upsert_message(account, _scan_decoded(1, body="cached body text"))
         db.close()
 
-        with patch("EmailMan.gmail.get_gmail_service", return_value=(MagicMock(), "user@example.com")), patch(
-            "EmailMan.gmail.fetch_account_and_labels", return_value=({}, [])
-        ), patch("EmailMan.gmail.fetch_bounded_sample", side_effect=fake_fetch), patch(
-            "EmailMan.classification.TabbyClient.complete_json", side_effect=complete_json
+        with patch("Mailroom.gmail.get_gmail_service", return_value=(MagicMock(), "user@example.com")), patch(
+            "Mailroom.gmail.fetch_account_and_labels", return_value=({}, [])
+        ), patch("Mailroom.gmail.fetch_bounded_sample", side_effect=fake_fetch), patch(
+            "Mailroom.classification.TabbyClient.complete_json", side_effect=complete_json
         ):
             args = self._args(["--suggest-labels", "--batch-size", "8"])
             code = cli_module.scan_cmd(args, self.config)
@@ -334,7 +334,7 @@ class TestScanSuggestLabels(unittest.TestCase):
         self.assertGreaterEqual(payload["message_count"], 1)
 
     def test_merge_timeout_falls_back_to_local_union(self):
-        from EmailMan.classification import ClassificationError
+        from Mailroom.classification import ClassificationError
 
         client = MagicMock()
         client.complete_json.side_effect = ClassificationError("Classification timeout after 3 attempts")

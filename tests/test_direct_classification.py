@@ -15,13 +15,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from EmailMan import EmailClassifier
-from EmailMan import app as app_module
-from EmailMan import cli as cli_module
-from EmailMan import config as config_module
-from EmailMan import db as db_module
-from EmailMan.classification import ClassificationError, Proposal, TabbyClient
-from EmailMan.config import is_loopback_url
+from Mailroom import EmailClassifier
+from Mailroom import app as app_module
+from Mailroom import cli as cli_module
+from Mailroom import config as config_module
+from Mailroom import db as db_module
+from Mailroom.classification import ClassificationError, Proposal, TabbyClient
+from Mailroom.config import is_loopback_url
 
 
 def receipt_proposal() -> Proposal:
@@ -71,8 +71,8 @@ class TestLibraryInterface(DirectClassificationTestBase):
     """The public package API for embedding classification."""
 
     def test_package_exports_classifier_config_proposal(self):
-        from EmailMan import Config, EmailClassifier as ExportedClassifier
-        from EmailMan import Proposal as ExportedProposal
+        from Mailroom import Config, EmailClassifier as ExportedClassifier
+        from Mailroom import Proposal as ExportedProposal
 
         self.assertIs(ExportedProposal, Proposal)
         self.assertIsInstance(Config(self.config_path), Config)
@@ -81,7 +81,7 @@ class TestLibraryInterface(DirectClassificationTestBase):
     def test_classifier_returns_proposal_and_passes_derived_label_ids(self):
         sentinel = receipt_proposal()
         with patch(
-            "EmailMan.classification.classify_message", return_value=sentinel
+            "Mailroom.classification.classify_message", return_value=sentinel
         ) as mock_classify:
             classifier = EmailClassifier(config=self.config)
             result = classifier.classify(subject="S", body="B")
@@ -94,7 +94,7 @@ class TestLibraryInterface(DirectClassificationTestBase):
     def test_classifier_email_text_passthrough(self):
         block = "From: A <a@b>\nSubject: S\n\nbody"
         with patch(
-            "EmailMan.classification.classify_message", return_value=receipt_proposal()
+            "Mailroom.classification.classify_message", return_value=receipt_proposal()
         ) as mock_classify:
             EmailClassifier(config=self.config).classify(email_text=block)
         self.assertEqual(mock_classify.call_args.kwargs["email_text"], block)
@@ -102,7 +102,7 @@ class TestLibraryInterface(DirectClassificationTestBase):
     def test_classifier_default_labels_and_explicit_subset(self):
         subset = [{"id": "Type/Receipt", "name": "Receipt"}]
         with patch(
-            "EmailMan.classification.classify_message", return_value=receipt_proposal()
+            "Mailroom.classification.classify_message", return_value=receipt_proposal()
         ) as mock_classify:
             EmailClassifier(config=self.config).classify(subject="s", body="b", labels=subset)
         kwargs = mock_classify.call_args.kwargs
@@ -110,13 +110,13 @@ class TestLibraryInterface(DirectClassificationTestBase):
         self.assertEqual(kwargs["labels"], subset)
 
         with patch(
-            "EmailMan.classification.classify_message", return_value=receipt_proposal()
+            "Mailroom.classification.classify_message", return_value=receipt_proposal()
         ) as mock_classify:
             EmailClassifier(config=self.config).classify(subject="s", body="b")
         self.assertEqual(mock_classify.call_args.kwargs["label_ids"], self.config.get_label_ids())
 
     def test_classifier_rejects_non_loopback_endpoint(self):
-        with patch("EmailMan.classification.classify_message") as mock_classify:
+        with patch("Mailroom.classification.classify_message") as mock_classify:
             with self.assertRaises(ClassificationError):
                 EmailClassifier(
                     config=self.config, model_endpoint="http://evil.example.com/v1"
@@ -134,7 +134,7 @@ class TestLibraryInterface(DirectClassificationTestBase):
 
 
 class TestCliDirectClassification(DirectClassificationTestBase):
-    """emailman classify --text/--file/--stdin plus backward-compatible DB modes."""
+    """mailroom classify --text/--file/--stdin plus backward-compatible DB modes."""
 
     def _args(self, *extra):
         return cli_module.create_cli_parser().parse_args(
@@ -144,7 +144,7 @@ class TestCliDirectClassification(DirectClassificationTestBase):
     def test_cli_classify_text_emits_json(self):
         args = self._args("--text", "Your receipt for order #1: $19.99")
         out = io.StringIO()
-        with patch("EmailMan.classification.classify_message", return_value=receipt_proposal()):
+        with patch("Mailroom.classification.classify_message", return_value=receipt_proposal()):
             with patch("sys.stdout", out):
                 code = cli_module.classify_cmd(args, self.config)
         self.assertEqual(code, 0)
@@ -159,7 +159,7 @@ class TestCliDirectClassification(DirectClassificationTestBase):
         out = io.StringIO()
         with patch("sys.stdin", io.StringIO("Please invoice for order 42")):
             with patch(
-                "EmailMan.classification.classify_message", return_value=receipt_proposal()
+                "Mailroom.classification.classify_message", return_value=receipt_proposal()
             ):
                 with patch("sys.stdout", out):
                     code = cli_module.classify_cmd(args, self.config)
@@ -182,7 +182,7 @@ class TestCliDirectClassification(DirectClassificationTestBase):
         args = self._args("--file", str(eml_path))
         out = io.StringIO()
         with patch(
-            "EmailMan.classification.classify_message", return_value=receipt_proposal()
+            "Mailroom.classification.classify_message", return_value=receipt_proposal()
         ) as mock_classify:
             with patch("sys.stdout", out):
                 code = cli_module.classify_cmd(args, self.config)
@@ -198,7 +198,7 @@ class TestCliDirectClassification(DirectClassificationTestBase):
         missing = Path(self.temp_dir) / "nope.eml"
         args = self._args("--file", str(missing))
         err = io.StringIO()
-        with patch("EmailMan.classification.classify_message") as mock_classify:
+        with patch("Mailroom.classification.classify_message") as mock_classify:
             with patch("sys.stderr", err):
                 code = cli_module.classify_cmd(args, self.config)
         self.assertEqual(code, 1)
@@ -208,7 +208,7 @@ class TestCliDirectClassification(DirectClassificationTestBase):
     def test_cli_classify_rejects_direct_plus_db_mode(self):
         args = self._args("--text", "x", "--message-id", "user@example.com:gm-1")
         err = io.StringIO()
-        with patch("EmailMan.classification.classify_message") as mock_classify:
+        with patch("Mailroom.classification.classify_message") as mock_classify:
             with patch("sys.stderr", err):
                 code = cli_module.classify_cmd(args, self.config)
         self.assertEqual(code, 1)
@@ -218,7 +218,7 @@ class TestCliDirectClassification(DirectClassificationTestBase):
     def test_cli_classify_direct_rejects_non_loopback_override(self):
         args = self._args("--text", "x", "--model-endpoint", "http://evil.example.com")
         err = io.StringIO()
-        with patch("EmailMan.classification.classify_message") as mock_classify:
+        with patch("Mailroom.classification.classify_message") as mock_classify:
             with patch("sys.stderr", err):
                 code = cli_module.classify_cmd(args, self.config)
         self.assertEqual(code, 1)
@@ -229,7 +229,7 @@ class TestCliDirectClassification(DirectClassificationTestBase):
         db_path = Path(self.config.database_path)
         self.assertFalse(db_path.exists())
         args = self._args("--text", "A body to classify")
-        with patch("EmailMan.classification.classify_message", return_value=receipt_proposal()):
+        with patch("Mailroom.classification.classify_message", return_value=receipt_proposal()):
             with patch("sys.stdout", io.StringIO()):
                 code = cli_module.classify_cmd(args, self.config)
         self.assertEqual(code, 0)
@@ -238,7 +238,7 @@ class TestCliDirectClassification(DirectClassificationTestBase):
     def test_cli_classify_backward_compatible_message_id(self):
         message_id = self.add_message(gmail_id="gm-1")
         args = self._args("--message-id", message_id)
-        with patch("EmailMan.classification.classify_message", return_value=receipt_proposal()):
+        with patch("Mailroom.classification.classify_message", return_value=receipt_proposal()):
             code = cli_module.classify_cmd(args, self.config)
         self.assertEqual(code, 0)
         db_obj = db_module.DB(self.config.database_path)
@@ -253,7 +253,7 @@ class TestCliDirectClassification(DirectClassificationTestBase):
         self.add_message(gmail_id="gm-2")
         args = self._args("--limit", "10")
         with patch(
-            "EmailMan.classification.classify_message", return_value=receipt_proposal()
+            "Mailroom.classification.classify_message", return_value=receipt_proposal()
         ) as mock_classify:
             code = cli_module.classify_cmd(args, self.config)
         self.assertEqual(code, 0)
@@ -263,7 +263,7 @@ class TestCliDirectClassification(DirectClassificationTestBase):
         self.add_message(gmail_id="gm-1")
         args = self._args("--limit", "0")
         err = io.StringIO()
-        with patch("EmailMan.classification.classify_message") as mock_classify:
+        with patch("Mailroom.classification.classify_message") as mock_classify:
             with patch("sys.stderr", err):
                 code = cli_module.classify_cmd(args, self.config)
         self.assertEqual(code, 1)
@@ -278,7 +278,7 @@ class TestCliDirectClassification(DirectClassificationTestBase):
         }
         for name, args in cases.items():
             err = io.StringIO()
-            with patch("EmailMan.classification.classify_message") as mock_classify:
+            with patch("Mailroom.classification.classify_message") as mock_classify:
                 with patch("sys.stderr", err):
                     code = cli_module.classify_cmd(args, self.config)
             self.assertEqual(code, 1, name)
@@ -292,7 +292,7 @@ class TestRestDirectClassification(DirectClassificationTestBase):
 
     def test_api_classify_direct_payload_without_db_row(self):
         with patch(
-            "EmailMan.classification.classify_message", return_value=receipt_proposal()
+            "Mailroom.classification.classify_message", return_value=receipt_proposal()
         ) as mock_classify:
             res = self.client.post(
                 "/api/classify",
@@ -333,7 +333,7 @@ class TestRestDirectClassification(DirectClassificationTestBase):
         self.assertIn("body must be a string", res.get_json()["error"])
 
     def test_api_classify_direct_rejects_non_loopback_override(self):
-        with patch("EmailMan.classification.classify_message") as mock_classify:
+        with patch("Mailroom.classification.classify_message") as mock_classify:
             res = self.client.post(
                 "/api/classify",
                 json={"body": "x", "model_endpoint": "http://evil.example.com/v1"},
@@ -357,7 +357,7 @@ class TestRestDirectClassification(DirectClassificationTestBase):
 
     def test_api_classify_message_id_still_persists(self):
         message_id = self.add_message(gmail_id="gm-1")
-        with patch("EmailMan.classification.classify_message", return_value=receipt_proposal()):
+        with patch("Mailroom.classification.classify_message", return_value=receipt_proposal()):
             res = self.client.post(
                 "/api/classify",
                 json={"message_id": message_id},
@@ -374,7 +374,7 @@ class TestRestDirectClassification(DirectClassificationTestBase):
 
     def test_api_classify_direct_response_omits_body(self):
         secret_body = "UNIQUE_SECRET_BODY_STRING_42"
-        with patch("EmailMan.classification.classify_message", return_value=receipt_proposal()):
+        with patch("Mailroom.classification.classify_message", return_value=receipt_proposal()):
             res = self.client.post(
                 "/api/classify",
                 json={"subject": "s", "body": secret_body, "sender": "s"},
@@ -408,7 +408,7 @@ class TestNonceFencingOnDirectPaths(DirectClassificationTestBase):
             ["--config", self.config_path, "classify", "--text", injection]
         )
         with patch(
-            "EmailMan.classification.classify_message", return_value=receipt_proposal()
+            "Mailroom.classification.classify_message", return_value=receipt_proposal()
         ) as mock_classify:
             with patch("sys.stdout", io.StringIO()):
                 code = cli_module.classify_cmd(args, self.config)

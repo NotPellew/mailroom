@@ -10,8 +10,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from EmailMan import db, export, ingest
-from EmailMan.cli import classify_cmd, ingest_cmd
+from Mailroom import db, export, ingest
+from Mailroom.cli import classify_cmd, ingest_cmd
 
 
 SAMPLE_PLAIN_EML = b"""From: Alice Example <alice@example.com>
@@ -92,7 +92,7 @@ INNER PLAIN BODY SHOULD NOT BE USED
 
 
 class TestEmlParsing(unittest.TestCase):
-    """Test RFC 822 / MIME parsing in EmailMan.ingest."""
+    """Test RFC 822 / MIME parsing in Mailroom.ingest."""
 
     def test_parse_eml_plain_text(self):
         decoded = ingest.parse_eml_bytes(SAMPLE_PLAIN_EML, source="local")
@@ -454,7 +454,7 @@ class TestCliIngestAndClassify(unittest.TestCase):
             ],
         }
         self.config_path.write_text(json.dumps(cfg_dict), encoding="utf-8")
-        from EmailMan.config import Config
+        from Mailroom.config import Config
 
         self.config = Config(str(self.config_path))
         self.db_path = Path(self.config.database_path)
@@ -513,7 +513,7 @@ class TestCliIngestAndClassify(unittest.TestCase):
             offset=0,
         )
 
-        from EmailMan.classification import Proposal
+        from Mailroom.classification import Proposal
 
         fake_proposal = Proposal(
             label_ids=["Type/Receipt"],
@@ -524,7 +524,7 @@ class TestCliIngestAndClassify(unittest.TestCase):
 
         stdout = io.StringIO()
         with patch("sys.stdout", stdout):
-            with patch("EmailMan.classification.classify_message", return_value=fake_proposal):
+            with patch("Mailroom.classification.classify_message", return_value=fake_proposal):
                 code = classify_cmd(classify_args, self.config)
 
         self.assertEqual(code, 0)
@@ -559,7 +559,7 @@ class TestCliIngestAndClassify(unittest.TestCase):
             offset=0,
         )
 
-        from EmailMan.classification import Proposal
+        from Mailroom.classification import Proposal
 
         fake_proposal = Proposal(
             label_ids=["Type/Newsletter"],
@@ -569,7 +569,7 @@ class TestCliIngestAndClassify(unittest.TestCase):
         )
 
         with patch("sys.stdout", io.StringIO()):
-            with patch("EmailMan.classification.classify_message", return_value=fake_proposal):
+            with patch("Mailroom.classification.classify_message", return_value=fake_proposal):
                 code = classify_cmd(classify_args, self.config)
 
         self.assertEqual(code, 0)
@@ -587,7 +587,7 @@ class TestReviewRoutesForLocalMessage(unittest.TestCase):
     """Test Flask routes rendering of local messages."""
 
     def test_review_payload_local_message_has_no_gmail_url(self):
-        from EmailMan.routes import _review_item_payload
+        from Mailroom.routes import _review_item_payload
 
         local_item = {
             "message_id": "local:12345",
@@ -604,7 +604,7 @@ class TestReviewRoutesForLocalMessage(unittest.TestCase):
         self.assertEqual(payload["message_id"], "local:12345")
 
     def test_api_classify_route_with_local_message(self):
-        from EmailMan.classification import Proposal
+        from Mailroom.classification import Proposal
 
         with tempfile.TemporaryDirectory() as tmp:
             config_path = Path(tmp) / "config.json"
@@ -614,7 +614,7 @@ class TestReviewRoutesForLocalMessage(unittest.TestCase):
                 "labels": [{"id": "Type/Receipt", "name": "Receipt", "axis": "kind"}],
             }
             config_path.write_text(json.dumps(cfg_dict), encoding="utf-8")
-            from EmailMan.config import Config
+            from Mailroom.config import Config
 
             cfg = Config(str(config_path))
 
@@ -633,7 +633,7 @@ class TestReviewRoutesForLocalMessage(unittest.TestCase):
             )
             database.close()
 
-            from EmailMan.app import create_app
+            from Mailroom.app import create_app
 
             app = create_app(cfg)
             client = app.test_client()
@@ -646,7 +646,7 @@ class TestReviewRoutesForLocalMessage(unittest.TestCase):
                 abstain=False,
             )
 
-            with patch("EmailMan.classification.classify_message", return_value=fake_proposal):
+            with patch("Mailroom.classification.classify_message", return_value=fake_proposal):
                 resp = client.post(
                     "/api/classify",
                     json={"message_id": msg_id},
@@ -890,7 +890,7 @@ class TestLocalEmptyBodyNotice(unittest.TestCase):
     """The empty-body notice must not point local mail at Gmail."""
 
     def test_local_empty_body_notice_does_not_reference_gmail(self):
-        from EmailMan.routes import _review_item_payload
+        from Mailroom.routes import _review_item_payload
 
         payload = _review_item_payload(
             {
@@ -907,14 +907,14 @@ class TestLocalEmptyBodyNotice(unittest.TestCase):
         self.assertIsNone(payload["gmail_url"])
 
         template_path = (
-            Path(__file__).resolve().parent.parent / "EmailMan" / "templates" / "index.html"
+            Path(__file__).resolve().parent.parent / "Mailroom" / "templates" / "index.html"
         )
         local_branch = next(
             line
             for line in template_path.read_text(encoding="utf-8").splitlines()
             if ': "Body cache expired' in line
         )
-        self.assertIn("re-run emailman ingest", local_branch)
+        self.assertIn("re-run mailroom ingest", local_branch)
         self.assertNotIn("Gmail", local_branch)
 
 

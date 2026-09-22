@@ -4,10 +4,10 @@ import os
 import tempfile
 import unittest
 
-from EmailMan import app as app_module
-from EmailMan import config as config_module
-from EmailMan import db as db_module
-from EmailMan import pilot as pilot_module
+from Mailroom import app as app_module
+from Mailroom import config as config_module
+from Mailroom import db as db_module
+from Mailroom import pilot as pilot_module
 
 
 class TestPilotConflicts(unittest.TestCase):
@@ -237,7 +237,7 @@ class TestSyncReview(unittest.TestCase):
         self.db.save_decision(self.account, mid, "corrected", labels)
 
     def test_conflicts_exit_2(self):
-        from EmailMan import cli as cli_module
+        from Mailroom import cli as cli_module
 
         self._msg("a", "Same subject here", ["Type/Receipt"])
         self._msg("b", "Same subject here", ["Type/Newsletter"])
@@ -249,7 +249,7 @@ class TestSyncReview(unittest.TestCase):
         self.assertEqual(code, 2)
 
     def test_no_conflicts_refreshes_examples(self):
-        from EmailMan import cli as cli_module
+        from Mailroom import cli as cli_module
 
         self._msg("a", "Unique grocery receipt XYZ", ["Type/Receipt"])
         self._msg("b", "Other unique invoice ABC", ["Type/Receipt"])

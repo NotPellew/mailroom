@@ -312,7 +312,7 @@ class TabbyClient:
             model_id: Optional model id to send (required by llama.cpp router / Ollama)
             provider: Optional provider override ('tabby', 'ollama', 'openai', 'auto')
         """
-        from EmailMan.config import is_loopback_url
+        from Mailroom.config import is_loopback_url
 
         if not is_loopback_url(endpoint):
             raise ClassificationError(

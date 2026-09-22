@@ -15,12 +15,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from EmailMan import app as app_module
-from EmailMan import cli as cli_module
-from EmailMan import config as config_module
-from EmailMan import db as db_module
-from EmailMan import gmail as gmail_module
-from EmailMan import ingest as ingest_module
+from Mailroom import app as app_module
+from Mailroom import cli as cli_module
+from Mailroom import config as config_module
+from Mailroom import db as db_module
+from Mailroom import gmail as gmail_module
+from Mailroom import ingest as ingest_module
 
 SAMPLE_EML = b"""From: Shop <noreply@shop.example>
 To: user@example.com
@@ -88,7 +88,7 @@ class TestLocalFirstPipeline(LocalFirstTestBase):
             self.assertEqual(client.get("/api/export?format=json").status_code, 200)
 
     def test_status_defaults_to_local_without_database(self):
-        from EmailMan.routes import get_status
+        from Mailroom.routes import get_status
 
         status = get_status(os.path.join(self.temp_dir, "missing.db"))
         self.assertFalse(status["db_initialized"])
@@ -109,7 +109,7 @@ class TestLocalFirstPipeline(LocalFirstTestBase):
         self.assertEqual(status["local_accounts"], 0)
 
     def test_template_exposes_local_mode_banner(self):
-        template_path = Path(__file__).resolve().parent.parent / "EmailMan" / "templates" / "index.html"
+        template_path = Path(__file__).resolve().parent.parent / "Mailroom" / "templates" / "index.html"
         html = template_path.read_text(encoding="utf-8")
         self.assertIn("mode-banner", html)
         self.assertIn("Local only", html)
@@ -160,7 +160,7 @@ class TestCliLocalFirstMessaging(LocalFirstTestBase):
 
         self.assertEqual(code, 1)
         err = stderr.getvalue()
-        self.assertIn("python -m EmailMan auth", err)
+        self.assertIn("python -m Mailroom auth", err)
         self.assertIn("ingest", err)
 
     def test_apply_labels_dry_run_needs_no_gmail_dependencies(self):

@@ -1,4 +1,4 @@
-"""Local email ingestion for EmailMan (.eml files and offline sources).
+"""Local email ingestion for Mailroom (.eml files and offline sources).
 
 Decouples ingestion from Gmail, allowing local emails and synthetic fixtures
 to be parsed, stored, and reviewed without Google credentials.
@@ -14,8 +14,8 @@ from datetime import timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from EmailMan.db import DB
-from EmailMan.gmail import BODY_PREVIEW_LIMIT, _html_to_text
+from Mailroom.db import DB
+from Mailroom.gmail import BODY_PREVIEW_LIMIT, _html_to_text
 
 logger = logging.getLogger(__name__)
 

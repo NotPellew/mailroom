@@ -9,7 +9,7 @@ import requests
 from unittest.mock import Mock, patch, MagicMock
 from dataclasses import asdict
 
-from EmailMan.classification import (
+from Mailroom.classification import (
     TabbyClient,
     ClassificationError,
     Proposal,
@@ -19,10 +19,10 @@ from EmailMan.classification import (
     label_definition_version,
     prompt_version,
 )
-from EmailMan import config as config_module
-from EmailMan import db as db_module
-from EmailMan import cli as cli_module
-from EmailMan import app as app_module
+from Mailroom import config as config_module
+from Mailroom import db as db_module
+from Mailroom import cli as cli_module
+from Mailroom import app as app_module
 
 
 class TestProposal(unittest.TestCase):
@@ -81,7 +81,7 @@ class TestTabbyClient(unittest.TestCase):
             max_retries=3,
         )
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_probe_endpoint_success(self, mock_session_cls):
         """Test successful endpoint probing."""
         # Mock response for model listing
@@ -106,7 +106,7 @@ class TestTabbyClient(unittest.TestCase):
             timeout=10.0,
         )
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_probe_endpoint_transient_failure_retry(self, mock_session_cls):
         """Test endpoint probing with transient failures."""
         # Mock 503 errors on first 2 attempts, then success
@@ -129,7 +129,7 @@ class TestTabbyClient(unittest.TestCase):
         self.assertEqual(mock_session.post.call_count, 3)
         self.assertEqual(result["status"], "ready")
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_probe_endpoint_timeout(self, mock_session_cls):
         """Test endpoint probing with timeout."""
         mock_session = mock_session_cls.return_value
@@ -139,7 +139,7 @@ class TestTabbyClient(unittest.TestCase):
             self.client.probe_endpoint()
         self.assertIn("timeout", str(ctx.exception).lower())
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_probe_endpoint_connection_error(self, mock_session_cls):
         """Test endpoint probing with connection error."""
         mock_session = mock_session_cls.return_value
@@ -149,7 +149,7 @@ class TestTabbyClient(unittest.TestCase):
             self.client.probe_endpoint()
         self.assertIn("Failed to connect", str(ctx.exception))
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_message_success(self, mock_session_cls):
         """Test successful message classification."""
         # Mock response with structured JSON output
@@ -180,7 +180,7 @@ class TestTabbyClient(unittest.TestCase):
         self.assertFalse(proposal.abstain)
         self.assertEqual(proposal.confidence, 0.85)
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_message_abstention(self, mock_session_cls):
         """Test message classification with abstention."""
         mock_response = Mock()
@@ -203,7 +203,7 @@ class TestTabbyClient(unittest.TestCase):
         self.assertEqual(proposal.reason, "Cannot confidently determine label")
         self.assertTrue(proposal.abstain)
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_message_malformed_json(self, mock_session_cls):
         """Test classification with malformed JSON response."""
         mock_response = Mock()
@@ -221,7 +221,7 @@ class TestTabbyClient(unittest.TestCase):
             )
         self.assertIn("Failed to parse", str(ctx.exception))
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_message_missing_required_fields(self, mock_session_cls):
         """Test classification with missing required fields."""
         mock_response = Mock()
@@ -242,7 +242,7 @@ class TestTabbyClient(unittest.TestCase):
             )
         self.assertIn("Missing required fields", str(ctx.exception))
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_message_abstention_with_labels(self, mock_session_cls):
         """Test classification where abstention is True but labels are also provided."""
         mock_response = Mock()
@@ -263,7 +263,7 @@ class TestTabbyClient(unittest.TestCase):
             )
         self.assertIn("Abstention requires empty label_ids", str(ctx.exception))
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_message_transient_error(self, mock_session_cls):
         """Test classification with transient errors."""
         mock_response = Mock()
@@ -278,7 +278,7 @@ class TestTabbyClient(unittest.TestCase):
             )
         self.assertIn("500", str(ctx.exception))
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_message_timeout(self, mock_session_cls):
         """Test classification with timeout."""
         mock_session_cls.return_value.post.side_effect = requests.exceptions.Timeout(
@@ -292,7 +292,7 @@ class TestTabbyClient(unittest.TestCase):
             )
         self.assertIn("timeout", str(ctx.exception).lower())
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_message_invalid_label_ids(self, mock_session_cls):
         """Test classification with label IDs not in allowed list."""
         mock_response = Mock()
@@ -462,7 +462,7 @@ class TestOpenAICompatClient(unittest.TestCase):
         )
         self.assertIsNone(openai_compat_base("http://127.0.0.1:8080/completion"))
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_probe_lists_loaded_model(self, mock_session_cls):
         mock_response = Mock()
         mock_response.status_code = 200
@@ -477,7 +477,7 @@ class TestOpenAICompatClient(unittest.TestCase):
         mock_session.get.assert_called_once()
         self.assertTrue(mock_session.get.call_args[0][0].endswith("/v1/models"))
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_posts_chat_completions(self, mock_session_cls):
         mock_response = Mock()
         mock_response.status_code = 200
@@ -543,7 +543,7 @@ class TestOpenAICompatClient(unittest.TestCase):
 class TestConvenienceFunctions(unittest.TestCase):
     """Test convenience functions."""
 
-    @patch("EmailMan.classification.TabbyClient")
+    @patch("Mailroom.classification.TabbyClient")
     def test_classify_message(self, mock_client_class):
         """Test classify_message convenience function."""
         mock_client = MagicMock()
@@ -565,7 +565,7 @@ class TestConvenienceFunctions(unittest.TestCase):
         mock_client_class.assert_called_once()
         mock_client.classify_message.assert_called_once()
 
-    @patch("EmailMan.classification.TabbyClient")
+    @patch("Mailroom.classification.TabbyClient")
     def test_probe_model_endpoint(self, mock_client_class):
         """Test probe_model_endpoint convenience function."""
         mock_client = MagicMock()
@@ -676,7 +676,7 @@ class TestPromptSafety(unittest.TestCase):
 
         fixture = (
             Path(__file__).resolve().parent.parent
-            / "EmailMan"
+            / "Mailroom"
             / "fixtures"
             / "mail_injection.eml"
         )
@@ -692,7 +692,7 @@ class TestPromptSafety(unittest.TestCase):
 class TestRetryLogic(unittest.TestCase):
     """Test retry logic behavior."""
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_exponential_backoff(self, mock_session_cls):
         """Test that exponential backoff is used."""
         # Mock 503 errors on first 4 attempts, then success
@@ -727,7 +727,7 @@ class TestRetryLogic(unittest.TestCase):
         for call in mock_session.post.call_args_list:
             self.assertEqual(call.kwargs["timeout"], 10.0)
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_stop_retry_on_non_transient_error(self, mock_session_cls):
         """Test that retries stop on non-transient errors."""
         mock_response = Mock()
@@ -806,7 +806,7 @@ class TestClassificationStorageAndApi(unittest.TestCase):
             ["--config", self.config_path, "classify", "--message-id", "user@example.com:gm-1"]
         )
         with patch(
-            "EmailMan.classification.classify_message",
+            "Mailroom.classification.classify_message",
             return_value=Proposal(label_ids=["Type/VerificationCode"], reason="code", abstain=False),
         ):
             code = cli_module.classify_cmd(args, self.config)
@@ -827,7 +827,7 @@ class TestClassificationStorageAndApi(unittest.TestCase):
             ["--config", self.config_path, "classify", "--message-id", "user@example.com:gm-1"]
         )
         with patch(
-            "EmailMan.classification.classify_message",
+            "Mailroom.classification.classify_message",
             return_value=Proposal(label_ids=["Type/VerificationCode"], reason="code", abstain=False),
         ) as mock_classify:
             code = cli_module.classify_cmd(args, self.config)
@@ -862,7 +862,7 @@ class TestClassificationStorageAndApi(unittest.TestCase):
             ["--config", self.config_path, "classify", "--limit", "10"]
         )
         with patch(
-            "EmailMan.classification.classify_message",
+            "Mailroom.classification.classify_message",
             return_value=Proposal(label_ids=["Type/Receipt"], reason="r", abstain=False),
         ) as mock_classify:
             code = cli_module.classify_cmd(args, self.config)
@@ -871,7 +871,7 @@ class TestClassificationStorageAndApi(unittest.TestCase):
 
         # A second run must not re-send mail that already has a proposal.
         with patch(
-            "EmailMan.classification.classify_message",
+            "Mailroom.classification.classify_message",
             return_value=Proposal(label_ids=["Type/Receipt"], reason="r", abstain=False),
         ) as mock_classify:
             code = cli_module.classify_cmd(args, self.config)
@@ -909,7 +909,7 @@ class TestClassificationStorageAndApi(unittest.TestCase):
             ["--config", self.config_path, "classify", "--limit", "10"]
         )
         with patch(
-            "EmailMan.classification.classify_message",
+            "Mailroom.classification.classify_message",
             return_value=Proposal(label_ids=["Type/Receipt"], reason="r", abstain=False),
         ) as mock_classify:
             code = cli_module.classify_cmd(args, self.config)
@@ -938,7 +938,7 @@ class TestClassificationStorageAndApi(unittest.TestCase):
         stats = {"ok": 0, "failed": 0, "skipped": 0}
 
         with patch(
-            "EmailMan.classification.TabbyClient.classify_message",
+            "Mailroom.classification.TabbyClient.classify_message",
             return_value=Proposal(label_ids=["Type/Receipt"], reason="r", abstain=False),
         ) as mock_classify:
             cli_module._classify_during_scan_worker(
@@ -981,7 +981,7 @@ class TestClassificationStorageAndApi(unittest.TestCase):
         app = app_module.create_app(self.config)
         client = app.test_client()
         with patch(
-            "EmailMan.classification.classify_message",
+            "Mailroom.classification.classify_message",
             return_value=Proposal(label_ids=["Type/VerificationCode"], reason="code", abstain=False),
         ):
             res = client.post(

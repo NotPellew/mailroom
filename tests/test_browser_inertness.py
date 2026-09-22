@@ -5,7 +5,7 @@ email content must stay inert text, the page must make no external requests,
 Gmail links must be well formed, and the local security headers must be present.
 
 Run with ``pytest -m browser`` after installing the ``browser`` extra and
-``python -m playwright install chromium``. Set ``EMAILMAN_REQUIRE_BROWSER=1`` to
+``python -m playwright install chromium``. Set ``MAILROOM_REQUIRE_BROWSER=1`` to
 turn a missing browser into a hard failure instead of a skip.
 """
 
@@ -18,13 +18,13 @@ from urllib.parse import urlparse
 import pytest
 from werkzeug.serving import make_server
 
-from EmailMan import app as app_module
-from EmailMan import config as config_module
-from EmailMan import db as db_module
+from Mailroom import app as app_module
+from Mailroom import config as config_module
+from Mailroom import db as db_module
 
 pytestmark = pytest.mark.browser
 
-REQUIRE_BROWSER = os.environ.get("EMAILMAN_REQUIRE_BROWSER") == "1"
+REQUIRE_BROWSER = os.environ.get("MAILROOM_REQUIRE_BROWSER") == "1"
 
 if REQUIRE_BROWSER:
     import playwright.sync_api as _playwright_api
