@@ -30,6 +30,16 @@ env/
 # Configuration and credentials
 config.json
 credentials.json
+config.candidate.json
+
+# Generated data artifacts (may contain message IDs, labels, and review state)
+choices.csv
+apply-labels-plan.csv
+mailroom-export*.csv
+mailroom-export*.json
+pilot-conflicts.json
+disagreements-*.md
+suggested-labels-*.json
 
 # Internal implementation notes
 IMPLEMENTATION.md
