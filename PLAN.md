@@ -1,4 +1,4 @@
-# EmailMan V1 project plan
+# Mailroom V1 project plan
 
 See `IMPLEMENTATION.md` for the sequential implementation tasks, concrete defaults, and acceptance criteria.
 

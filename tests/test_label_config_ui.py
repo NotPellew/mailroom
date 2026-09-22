@@ -12,10 +12,10 @@ import tempfile
 import unittest
 from urllib.parse import quote
 
-from EmailMan import app as app_module
-from EmailMan import config as config_module
-from EmailMan import db as db_module
-from EmailMan.config import ConfigError
+from Mailroom import app as app_module
+from Mailroom import config as config_module
+from Mailroom import db as db_module
+from Mailroom.config import ConfigError
 
 BACKUP_SUFFIX = ".bak-label-edit"
 

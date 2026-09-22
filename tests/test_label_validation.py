@@ -5,10 +5,10 @@ import shutil
 import tempfile
 import unittest
 
-from EmailMan import app as app_module
-from EmailMan import db as db_module
-from EmailMan import config as config_module
-from EmailMan.db import DatabaseError
+from Mailroom import app as app_module
+from Mailroom import db as db_module
+from Mailroom import config as config_module
+from Mailroom.db import DatabaseError
 
 
 class TestLabelValidation(unittest.TestCase):

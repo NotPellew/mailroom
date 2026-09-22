@@ -7,11 +7,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from EmailMan import app as app_module
-from EmailMan import cli as cli_module
-from EmailMan import config as config_module
-from EmailMan import db as db_module
-from EmailMan import gmail as gmail_module
+from Mailroom import app as app_module
+from Mailroom import cli as cli_module
+from Mailroom import config as config_module
+from Mailroom import db as db_module
+from Mailroom import gmail as gmail_module
 
 
 class TestOptionalGmailDependencies(unittest.TestCase):
@@ -36,7 +36,7 @@ class TestOptionalGmailDependencies(unittest.TestCase):
             with self.assertRaises(gmail_module.GmailError) as cm:
                 gmail_module.ensure_gmail_dependencies()
             self.assertIn("keyring, google-api-python-client", str(cm.exception))
-            self.assertIn("emailman[gmail]", str(cm.exception))
+            self.assertIn("mailroom[gmail]", str(cm.exception))
 
     def test_credential_helpers_require_dependencies(self):
         """Credential helper functions call ensure_gmail_dependencies."""
@@ -77,18 +77,18 @@ class TestOptionalGmailDependencies(unittest.TestCase):
                 with patch.object(
                     gmail_module,
                     "ensure_gmail_dependencies",
-                    side_effect=gmail_module.GmailError("Install emailman[gmail]"),
+                    side_effect=gmail_module.GmailError("Install mailroom[gmail]"),
                 ):
                     # auth
                     code_auth = cli_module.auth_cmd(args, cfg)
                     self.assertEqual(code_auth, 1)
-                    self.assertIn("Install emailman[gmail]", stderr.getvalue())
+                    self.assertIn("Install mailroom[gmail]", stderr.getvalue())
 
                     # scan
                     code_scan = cli_module.scan_cmd(args, cfg)
                     self.assertEqual(code_scan, 1)
-                    self.assertIn("Gmail error: Install emailman[gmail]", stderr.getvalue())
-                    self.assertNotIn("Run: python -m EmailMan auth", stderr.getvalue())
+                    self.assertIn("Gmail error: Install mailroom[gmail]", stderr.getvalue())
+                    self.assertNotIn("Run: python -m Mailroom auth", stderr.getvalue())
 
                     # apply-labels dry run with no targets returns 0
                     code_dry = cli_module.apply_labels_cmd(args, cfg)
@@ -133,7 +133,7 @@ class TestZeroFrictionAutoInit(unittest.TestCase):
     """Test automatic configuration and database creation on first run."""
 
     def test_run_review_server_auto_initializes_db_if_missing(self):
-        """run_review_server initializes EmailMan.db when it does not exist."""
+        """run_review_server initializes Mailroom.db when it does not exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cfg_path = Path(tmpdir) / "config.json"
             cfg = config_module.Config(str(cfg_path))
@@ -177,7 +177,7 @@ class TestZeroFrictionAutoInit(unittest.TestCase):
 
 
 class TestDoctorCommand(unittest.TestCase):
-    """Test emailman doctor diagnostic output and status checks."""
+    """Test mailroom doctor diagnostic output and status checks."""
 
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
@@ -191,7 +191,7 @@ class TestDoctorCommand(unittest.TestCase):
         self.tmpdir.cleanup()
 
     def test_doctor_command_success_with_healthy_mock_backend(self):
-        """emailman doctor succeeds and displays [✓] when environment and backend are healthy."""
+        """mailroom doctor succeeds and displays [✓] when environment and backend are healthy."""
         args = argparse.Namespace(strict=False)
         stdout = io.StringIO()
 
@@ -203,12 +203,12 @@ class TestDoctorCommand(unittest.TestCase):
         }
 
         with patch("sys.stdout", stdout):
-            with patch("EmailMan.classification.probe_model_endpoint", return_value=mock_probe):
+            with patch("Mailroom.classification.probe_model_endpoint", return_value=mock_probe):
                 code = cli_module.doctor_cmd(args, self.cfg)
 
         output = stdout.getvalue()
         self.assertEqual(code, 0)
-        self.assertIn("EmailMan Environment Doctor", output)
+        self.assertIn("Mailroom Environment Doctor", output)
         self.assertIn("[✓] Python:", output)
         self.assertIn("[✓] Configuration:", output)
         self.assertIn("[✓] Database:", output)
@@ -216,7 +216,7 @@ class TestDoctorCommand(unittest.TestCase):
         self.assertIn("All checks passed. System is ready.", output)
 
     def test_doctor_command_ollama_model_presence(self):
-        """emailman doctor verifies model presence in Ollama available_models."""
+        """mailroom doctor verifies model presence in Ollama available_models."""
         args = argparse.Namespace(strict=False)
         self.cfg._config["model"]["provider"] = "ollama"
         self.cfg._config["model"]["id"] = "qwen2.5:7b"
@@ -231,7 +231,7 @@ class TestDoctorCommand(unittest.TestCase):
             "available_models": ["qwen2.5:7b", "llama3:latest"],
         }
         with patch("sys.stdout", stdout_ok):
-            with patch("EmailMan.classification.probe_model_endpoint", return_value=mock_probe_ok):
+            with patch("Mailroom.classification.probe_model_endpoint", return_value=mock_probe_ok):
                 code = cli_module.doctor_cmd(args, self.cfg)
         self.assertEqual(code, 0)
         self.assertIn("[✓] Model presence: 'qwen2.5:7b' found in Ollama local library", stdout_ok.getvalue())
@@ -246,19 +246,19 @@ class TestDoctorCommand(unittest.TestCase):
             "available_models": ["other:3b"],
         }
         with patch("sys.stdout", stdout_missing):
-            with patch("EmailMan.classification.probe_model_endpoint", return_value=mock_probe_missing):
+            with patch("Mailroom.classification.probe_model_endpoint", return_value=mock_probe_missing):
                 code = cli_module.doctor_cmd(args, self.cfg)
         self.assertEqual(code, 0)
         self.assertIn("[!] Model presence: 'qwen2.5:7b' not found in Ollama local models", stdout_missing.getvalue())
         self.assertIn("ollama pull qwen2.5:7b", stdout_missing.getvalue())
 
     def test_doctor_command_warns_when_backend_unreachable(self):
-        """emailman doctor gracefully warns when backend is offline."""
+        """mailroom doctor gracefully warns when backend is offline."""
         stdout = io.StringIO()
         args = argparse.Namespace(strict=False)
 
         with patch("sys.stdout", stdout):
-            with patch("EmailMan.classification.probe_model_endpoint", side_effect=Exception("Connection refused")):
+            with patch("Mailroom.classification.probe_model_endpoint", side_effect=Exception("Connection refused")):
                 code = cli_module.doctor_cmd(args, self.cfg)
 
         output = stdout.getvalue()
@@ -270,12 +270,12 @@ class TestDoctorCommand(unittest.TestCase):
         stdout_strict = io.StringIO()
         args_strict = argparse.Namespace(strict=True)
         with patch("sys.stdout", stdout_strict):
-            with patch("EmailMan.classification.probe_model_endpoint", side_effect=Exception("Connection refused")):
+            with patch("Mailroom.classification.probe_model_endpoint", side_effect=Exception("Connection refused")):
                 code_strict = cli_module.doctor_cmd(args_strict, self.cfg)
         self.assertEqual(code_strict, 1)
 
     def test_doctor_command_flags_non_loopback_endpoint(self):
-        """emailman doctor detects and flags non-loopback endpoints."""
+        """mailroom doctor detects and flags non-loopback endpoints."""
         stdout = io.StringIO()
         args = argparse.Namespace(strict=False)
         self.cfg._config["model"]["endpoint"] = "http://remote-api.com/v1"
@@ -288,7 +288,7 @@ class TestDoctorCommand(unittest.TestCase):
         self.assertIn("is not a loopback URL", output)
 
     def test_doctor_command_reports_uninitialized_database(self):
-        """emailman doctor accurately notes if database has not been initialized yet."""
+        """mailroom doctor accurately notes if database has not been initialized yet."""
         with tempfile.TemporaryDirectory() as empty_dir:
             cfg = config_module.Config(str(Path(empty_dir) / "config.json"))
             args = argparse.Namespace(strict=False)
@@ -301,7 +301,7 @@ class TestDoctorCommand(unittest.TestCase):
                 "provider": "tabby",
             }
             with patch("sys.stdout", stdout):
-                with patch("EmailMan.classification.probe_model_endpoint", return_value=mock_probe):
+                with patch("Mailroom.classification.probe_model_endpoint", return_value=mock_probe):
                     code = cli_module.doctor_cmd(args, cfg)
 
             output = stdout.getvalue()
@@ -310,7 +310,7 @@ class TestDoctorCommand(unittest.TestCase):
             self.assertIn("not created yet; will be auto-created", output)
 
     def test_doctor_command_detects_outdated_schema(self):
-        """emailman doctor detects outdated schema without auto-migrating it."""
+        """mailroom doctor detects outdated schema without auto-migrating it."""
         import sqlite3
         with tempfile.TemporaryDirectory() as empty_dir:
             cfg = config_module.Config(str(Path(empty_dir) / "config.json"))
@@ -332,12 +332,12 @@ class TestDoctorCommand(unittest.TestCase):
                 "provider": "tabby",
             }
             with patch("sys.stdout", stdout):
-                with patch("EmailMan.classification.probe_model_endpoint", return_value=mock_probe):
+                with patch("Mailroom.classification.probe_model_endpoint", return_value=mock_probe):
                     code = cli_module.doctor_cmd(args, cfg)
 
             output = stdout.getvalue()
             self.assertEqual(code, 1)
-            self.assertIn("Schema v3 is outdated; run 'emailman fix-schema'", output)
+            self.assertIn("Schema v3 is outdated; run 'mailroom fix-schema'", output)
 
             # Ensure the database was NOT mutated by doctor
             conn2 = sqlite3.connect(str(db_file))
@@ -346,7 +346,7 @@ class TestDoctorCommand(unittest.TestCase):
             self.assertEqual(v, 3)
 
     def test_doctor_command_warns_when_model_is_unknown(self):
-        """emailman doctor warns when probe returns model 'unknown' on Tabby/OpenAI."""
+        """mailroom doctor warns when probe returns model 'unknown' on Tabby/OpenAI."""
         args = argparse.Namespace(strict=False)
         stdout = io.StringIO()
         mock_probe = {
@@ -356,14 +356,14 @@ class TestDoctorCommand(unittest.TestCase):
             "provider": "tabby",
         }
         with patch("sys.stdout", stdout):
-            with patch("EmailMan.classification.probe_model_endpoint", return_value=mock_probe):
+            with patch("Mailroom.classification.probe_model_endpoint", return_value=mock_probe):
                 code = cli_module.doctor_cmd(args, self.cfg)
         output = stdout.getvalue()
         self.assertEqual(code, 0)
         self.assertIn("[!] Model status: no model currently active in backend", output)
 
     def test_doctor_command_reports_optional_gmail_dependencies_missing(self):
-        """emailman doctor reports when optional Gmail dependencies are not installed."""
+        """mailroom doctor reports when optional Gmail dependencies are not installed."""
         stdout = io.StringIO()
         args = argparse.Namespace(strict=False)
 
@@ -374,14 +374,14 @@ class TestDoctorCommand(unittest.TestCase):
             "provider": "tabby",
         }
         with patch("sys.stdout", stdout):
-            with patch("EmailMan.classification.probe_model_endpoint", return_value=mock_probe):
-                with patch("EmailMan.gmail.check_gmail_dependencies", return_value=(False, ["keyring", "google-api-python-client"])):
+            with patch("Mailroom.classification.probe_model_endpoint", return_value=mock_probe):
+                with patch("Mailroom.gmail.check_gmail_dependencies", return_value=(False, ["keyring", "google-api-python-client"])):
                     code = cli_module.doctor_cmd(args, self.cfg)
 
         output = stdout.getvalue()
         self.assertEqual(code, 0)
         self.assertIn("[i] Gmail dependencies: not installed (optional, missing: keyring, google-api-python-client)", output)
-        self.assertIn("pip install 'emailman[gmail]'", output)
+        self.assertIn("pip install 'mailroom[gmail]'", output)
 
 
 if __name__ == "__main__":

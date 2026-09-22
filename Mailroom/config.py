@@ -1,4 +1,4 @@
-"""Configuration handling for EmailMan."""
+"""Configuration handling for Mailroom."""
 
 import os
 import json
@@ -16,19 +16,19 @@ class ConfigError(Exception):
 
 
 def default_app_dir() -> Path:
-    """Return the per-user EmailMan data directory.
+    """Return the per-user Mailroom data directory.
 
-    On Windows this is ``%LOCALAPPDATA%\\EmailMan``. On Linux/macOS it is
-    ``$XDG_CONFIG_HOME/emailman`` or ``~/.config/emailman``.
+    On Windows this is ``%LOCALAPPDATA%\\Mailroom``. On Linux/macOS it is
+    ``$XDG_CONFIG_HOME/mailroom`` or ``~/.config/mailroom``.
     """
     local_appdata = os.getenv("LOCALAPPDATA")
     if local_appdata:
-        return Path(local_appdata) / "EmailMan"
+        return Path(local_appdata) / "Mailroom"
     xdg = os.getenv("XDG_CONFIG_HOME")
     if xdg:
-        return Path(xdg) / "emailman"
+        return Path(xdg) / "mailroom"
     home = os.getenv("HOME") or str(Path.home())
-    return Path(home) / ".config" / "emailman"
+    return Path(home) / ".config" / "mailroom"
 
 
 def is_loopback_host(hostname: Optional[str]) -> bool:
@@ -555,7 +555,7 @@ class Config:
     @property
     def database_path(self) -> str:
         """Get database path within config directory."""
-        return str(self.config_dir / "EmailMan.db")
+        return str(self.config_dir / "Mailroom.db")
 
 
 DEFAULT_LABEL_IDS: List[str] = Config.DEFAULT_LABEL_IDS

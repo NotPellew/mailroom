@@ -1,4 +1,4 @@
-# EmailMan V1 pilot report
+# Mailroom V1 pilot report
 
 Computed at 2026-09-14T20:43:12.386465+00:00.
 Local model id: `qwen3.8-27b-gsq-rco-iq3_s`.

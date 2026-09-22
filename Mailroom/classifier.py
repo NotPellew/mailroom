@@ -1,10 +1,10 @@
-"""High-level local classification facade for embedding EmailMan."""
+"""High-level local classification facade for embedding Mailroom."""
 
 from typing import Any, Dict, List, Optional
 
-from EmailMan import classification
-from EmailMan.classification import ClassificationError, Proposal
-from EmailMan.config import Config, is_loopback_url
+from Mailroom import classification
+from Mailroom.classification import ClassificationError, Proposal
+from Mailroom.config import Config, is_loopback_url
 
 
 class EmailClassifier:

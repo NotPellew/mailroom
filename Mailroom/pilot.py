@@ -10,13 +10,13 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from EmailMan.classification import ClassificationError, TabbyClient
+from Mailroom.classification import ClassificationError, TabbyClient
 
-from EmailMan.config import normalize_label_id
+from Mailroom.config import normalize_label_id
 
 
 def _norm_ids(raw: Any) -> List[str]:
-    from EmailMan.db import _parse_json_list
+    from Mailroom.db import _parse_json_list
 
     ids = _parse_json_list(raw) if not isinstance(raw, list) else list(raw)
     out = []
@@ -269,7 +269,7 @@ def stats_to_markdown(metrics: Dict[str, Any], model_id: str, include_conflict_p
         return str(x)
 
     lines = [
-        "# EmailMan V1 pilot report",
+        "# Mailroom V1 pilot report",
         "",
         f"Computed at {metrics.get('computed_at')}.",
         f"Local model id: `{model_id}`.",
@@ -366,7 +366,7 @@ STATS:
 {json.dumps(safe, indent=2, default=str)}
 """
     raw = client._generate(prompt, max_tokens=500)
-    from EmailMan.classification import _extract_completion_text
+    from Mailroom.classification import _extract_completion_text
 
     text = _extract_completion_text(raw).strip()
     if text.startswith("```"):

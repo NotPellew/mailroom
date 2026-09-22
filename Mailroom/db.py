@@ -1,4 +1,4 @@
-"""Database schema and initialization for EmailMan."""
+"""Database schema and initialization for Mailroom."""
 
 import sqlite3
 import json
@@ -46,7 +46,7 @@ def _kind_set_expr(column: str) -> str:
 
 
 class DB:
-    """SQLite database for EmailMan."""
+    """SQLite database for Mailroom."""
 
     # Schema version
     SCHEMA_VERSION = 6
@@ -160,9 +160,9 @@ class DB:
             allowed_labels: Optional collection of allowed label IDs for decision validation
         """
         if db_path is None:
-            from EmailMan.config import default_app_dir
+            from Mailroom.config import default_app_dir
 
-            db_path = str(default_app_dir() / "EmailMan.db")
+            db_path = str(default_app_dir() / "Mailroom.db")
         else:
             db_path = os.path.abspath(db_path)
 
@@ -288,7 +288,7 @@ class DB:
             )
 
         if from_version < 5:
-            # Snapshot of the labels EmailMan last applied to a Gmail message,
+            # Snapshot of the labels Mailroom last applied to a Gmail message,
             # so sync-labels can tell a user edit from an untouched suggestion.
             cursor.executescript(self.TABLE_APPLIED_LABELS)
 
@@ -838,7 +838,7 @@ class DB:
         Stored ids are normalized through the legacy aliases so a decision taken
         before a rename still blocks removal of the current label.
         """
-        from EmailMan.config import normalize_label_id
+        from Mailroom.config import normalize_label_id
 
         target = normalize_label_id(label_id)
         cursor = self.conn.cursor()
@@ -916,11 +916,11 @@ class DB:
             elif self.allowed_labels is not None:
                 effective_allowed = set(self.allowed_labels)
             else:
-                from EmailMan.config import DEFAULT_LABEL_IDS
+                from Mailroom.config import DEFAULT_LABEL_IDS
 
                 effective_allowed = set(DEFAULT_LABEL_IDS)
 
-            from EmailMan.config import LEGACY_LABEL_ALIASES
+            from Mailroom.config import LEGACY_LABEL_ALIASES
 
             permissible = set(effective_allowed)
             permissible.update(LEGACY_LABEL_ALIASES.keys())
@@ -1189,7 +1189,7 @@ class DB:
         Saved label ids are normalized through the legacy aliases so a decision
         taken before a rename is not silently dropped when building a plan.
         """
-        from EmailMan.config import normalize_label_id
+        from Mailroom.config import normalize_label_id
 
         cursor = self.conn.cursor()
         cursor.execute(
@@ -1222,7 +1222,7 @@ class DB:
         return rows
 
     def record_applied_labels(self, account_id: str, message_id: str, label_ids: List[str]) -> None:
-        """Store the labels EmailMan last applied to a message (upsert)."""
+        """Store the labels Mailroom last applied to a message (upsert)."""
         cursor = self.conn.cursor()
         cursor.execute(
             """

@@ -10,7 +10,7 @@ from email import policy
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from EmailMan import db, config as config_module, app as app_module, cli as cli_module, routes as routes_module
+from Mailroom import db, config as config_module, app as app_module, cli as cli_module, routes as routes_module
 
 
 class TestAppSkeleton(unittest.TestCase):
@@ -20,7 +20,7 @@ class TestAppSkeleton(unittest.TestCase):
         """Set up isolated test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         self.config_path = os.path.join(self.temp_dir, "config.json")
-        self.db_path = os.path.join(self.temp_dir, "EmailMan.db")
+        self.db_path = os.path.join(self.temp_dir, "Mailroom.db")
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -29,7 +29,7 @@ class TestAppSkeleton(unittest.TestCase):
 
     def test_package_layout(self):
         """Test that required package files, config example, templates, and fixtures exist."""
-        from EmailMan import config, db, app, cli, routes
+        from Mailroom import config, db, app, cli, routes
 
         self.assertTrue(hasattr(config, "Config"))
         self.assertTrue(hasattr(config, "ConfigError"))
@@ -48,11 +48,11 @@ class TestAppSkeleton(unittest.TestCase):
         repo_root = Path(__file__).parent.parent
         self.assertTrue((repo_root / "config.example.json").exists(), "config.example.json missing")
 
-        templates_dir = repo_root / "EmailMan" / "templates"
+        templates_dir = repo_root / "Mailroom" / "templates"
         self.assertTrue(templates_dir.exists())
         self.assertTrue((templates_dir / "index.html").exists())
 
-        fixtures_dir = repo_root / "EmailMan" / "fixtures"
+        fixtures_dir = repo_root / "Mailroom" / "fixtures"
         self.assertTrue(fixtures_dir.exists())
         self.assertTrue((fixtures_dir / "mail_1.eml").exists())
         self.assertTrue((fixtures_dir / "mail_2.eml").exists())
@@ -193,7 +193,7 @@ class TestAppSkeleton(unittest.TestCase):
     def test_config_database_path_isolated(self):
         """Test that database_path is derived from the custom config location."""
         cfg = config_module.Config(self.config_path)
-        expected_db = os.path.join(self.temp_dir, "EmailMan.db")
+        expected_db = os.path.join(self.temp_dir, "Mailroom.db")
         self.assertEqual(cfg.database_path, expected_db)
 
     def test_default_app_dir_linux_and_windows(self):
@@ -203,21 +203,21 @@ class TestAppSkeleton(unittest.TestCase):
         with patch.dict(os.environ, {"LOCALAPPDATA": self.temp_dir}, clear=False):
             self.assertEqual(
                 config_module.default_app_dir(),
-                Path(self.temp_dir) / "EmailMan",
+                Path(self.temp_dir) / "Mailroom",
             )
         env = {k: v for k, v in os.environ.items() if k != "LOCALAPPDATA"}
         env["XDG_CONFIG_HOME"] = self.temp_dir
         with patch.dict(os.environ, env, clear=True):
             self.assertEqual(
                 config_module.default_app_dir(),
-                Path(self.temp_dir) / "emailman",
+                Path(self.temp_dir) / "mailroom",
             )
         env.pop("XDG_CONFIG_HOME", None)
         env["HOME"] = self.temp_dir
         with patch.dict(os.environ, env, clear=True):
             self.assertEqual(
                 config_module.default_app_dir(),
-                Path(self.temp_dir) / ".config" / "emailman",
+                Path(self.temp_dir) / ".config" / "mailroom",
             )
 
     def test_config_validation_loopback_enforced(self):
@@ -338,7 +338,7 @@ class TestAppSkeleton(unittest.TestCase):
         # Root review page
         res = client.get("/")
         self.assertEqual(res.status_code, 200)
-        self.assertIn("EmailMan", res.get_data(as_text=True))
+        self.assertIn("Mailroom", res.get_data(as_text=True))
 
         # Status endpoint before DB initialization (must not crash)
         res = client.get("/api/status")
@@ -389,7 +389,7 @@ class TestAppSkeleton(unittest.TestCase):
 
     def test_synthetic_fixtures_parsing(self):
         """Test that synthetic email fixtures are valid RFC 2822 format and parseable."""
-        fixtures_dir = Path(__file__).parent.parent / "EmailMan" / "fixtures"
+        fixtures_dir = Path(__file__).parent.parent / "Mailroom" / "fixtures"
         mail_files = ["mail_1.eml", "mail_2.eml"]
 
         for mf in mail_files:

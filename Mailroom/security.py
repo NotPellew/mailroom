@@ -11,7 +11,7 @@ import secrets
 from typing import Optional
 from urllib.parse import urlparse
 
-from EmailMan.config import is_loopback_host
+from Mailroom.config import is_loopback_host
 
 
 def host_from_header(host_header: Optional[str]) -> str:

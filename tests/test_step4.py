@@ -11,13 +11,13 @@ import shutil
 import tempfile
 import unittest
 
-from EmailMan import app as app_module
-from EmailMan import cli as cli_module
-from EmailMan import config as config_module
-from EmailMan import db as db_module
-from EmailMan import export as export_module
-from EmailMan import security as security_module
-from EmailMan import routes as routes_module
+from Mailroom import app as app_module
+from Mailroom import cli as cli_module
+from Mailroom import config as config_module
+from Mailroom import db as db_module
+from Mailroom import export as export_module
+from Mailroom import security as security_module
+from Mailroom import routes as routes_module
 
 
 class ReviewTestBase(unittest.TestCase):
@@ -606,7 +606,7 @@ class TestEndpointOverride(ReviewTestBase):
         self.assertEqual(cli_module.classify_cmd(args, self.config), 1)
 
     def test_config_helper(self):
-        from EmailMan.config import is_loopback_url
+        from Mailroom.config import is_loopback_url
 
         self.assertTrue(is_loopback_url("http://127.0.0.1:8080/completion"))
         self.assertTrue(is_loopback_url("http://localhost:8080"))
@@ -789,7 +789,7 @@ class TestExport(ReviewTestBase):
 class TestV3ToV4Migration(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.temp_dir, "EmailMan.db")
+        self.db_path = os.path.join(self.temp_dir, "Mailroom.db")
 
     def tearDown(self):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
@@ -907,7 +907,7 @@ class TestV3ToV4Migration(unittest.TestCase):
 class TestInertRendering(unittest.TestCase):
     def test_template_uses_text_not_innerhtml_and_has_no_remote_loads(self):
         template_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "EmailMan", "templates", "index.html"
+            os.path.dirname(os.path.dirname(__file__)), "Mailroom", "templates", "index.html"
         )
         with open(template_path, encoding="utf-8") as f:
             html = f.read()

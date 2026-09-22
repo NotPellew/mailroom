@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "emailman"
+name = "mailroom"
 version = "0.1.0"
 description = "Local-first mail label suggestion, review, and export (Gmail sync optional)"
 readme = "README.md"
@@ -15,11 +15,11 @@ dependencies = [
 ]
 
 [project.scripts]
-emailman = "EmailMan.cli:main"
+mailroom = "Mailroom.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/NotPellew/open-emailman"
-Issues = "https://github.com/NotPellew/open-emailman/issues"
+Homepage = "https://github.com/NotPellew/mailroom"
+Issues = "https://github.com/NotPellew/mailroom/issues"
 
 [project.optional-dependencies]
 gmail = [
@@ -32,7 +32,7 @@ dev = [
     "pytest>=8",
     "ruff>=0.11",
     "mypy>=1.15",
-    "emailman[gmail]",
+    "mailroom[gmail]",
 ]
 browser = [
     "playwright>=1.48,<2",
@@ -40,11 +40,11 @@ browser = [
 
 [dependency-groups]
 dev = [
-    "emailman[dev,gmail]",
+    "mailroom[dev,gmail]",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["EmailMan"]
+packages = ["Mailroom"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

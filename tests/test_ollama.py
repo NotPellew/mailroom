@@ -11,9 +11,9 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from EmailMan import db as db_module
+from Mailroom import db as db_module
 
-from EmailMan.classification import (
+from Mailroom.classification import (
     ClassificationError,
     PROPOSAL_JSON_SCHEMA,
     PROVIDER_OLLAMA,
@@ -25,7 +25,7 @@ from EmailMan.classification import (
     detect_provider,
     probe_model_endpoint,
 )
-from EmailMan.config import Config, ConfigError, HARDWARE_PROFILES
+from Mailroom.config import Config, ConfigError, HARDWARE_PROFILES
 
 
 class TestOllamaProviderDetection(unittest.TestCase):
@@ -70,7 +70,7 @@ class TestOllamaProviderDetection(unittest.TestCase):
         )
 
     def test_ollama_base_preserves_subpath(self):
-        from EmailMan.classification import ollama_base
+        from Mailroom.classification import ollama_base
 
         self.assertEqual(
             ollama_base("http://127.0.0.1:8080/ollama/api/generate"),
@@ -94,7 +94,7 @@ class TestOllamaProbing(unittest.TestCase):
             model_id="qwen2.5:7b",
         )
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_probe_endpoint_success(self, mock_session_cls):
         mock_response = Mock()
         mock_response.status_code = 200
@@ -120,7 +120,7 @@ class TestOllamaProbing(unittest.TestCase):
             timeout=5.0,
         )
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_probe_endpoint_resolves_unknown_model(self, mock_session_cls):
         client = TabbyClient(endpoint="http://127.0.0.1:11434", timeout=5.0)
         mock_response = Mock()
@@ -135,7 +135,7 @@ class TestOllamaProbing(unittest.TestCase):
         self.assertEqual(result["model_id"], "mistral:7b")
         self.assertEqual(client.model_id, "mistral:7b")
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_probe_endpoint_retry_on_transient_error(self, mock_session_cls):
         mock_response = Mock()
         mock_response.status_code = 200
@@ -150,7 +150,7 @@ class TestOllamaProbing(unittest.TestCase):
         self.assertEqual(result["status"], "ready")
         self.assertEqual(mock_session.get.call_count, 2)
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_probe_endpoint_timeout(self, mock_session_cls):
         mock_session = mock_session_cls.return_value
         mock_session.get.side_effect = requests.exceptions.Timeout("Timeout")
@@ -159,7 +159,7 @@ class TestOllamaProbing(unittest.TestCase):
             self.client.probe_endpoint()
         self.assertIn("timeout", str(ctx.exception).lower())
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_probe_endpoint_non_dict_json(self, mock_session_cls):
         mock_response = Mock(status_code=200)
         mock_response.json.return_value = ["not", "a", "dict"]
@@ -170,7 +170,7 @@ class TestOllamaProbing(unittest.TestCase):
             self.client.probe_endpoint()
         self.assertIn("Malformed response", str(ctx.exception))
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_probe_endpoint_empty_or_missing_models(self, mock_session_cls):
         client = TabbyClient("http://127.0.0.1:11434")
         mock_response = Mock(status_code=200)
@@ -201,7 +201,7 @@ class TestOllamaClassification(unittest.TestCase):
             "Retention/30Days",
         ]
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_message_structured_schema(self, mock_session_cls):
         mock_response = Mock()
         mock_response.status_code = 200
@@ -241,7 +241,7 @@ class TestOllamaClassification(unittest.TestCase):
         self.assertFalse(payload["stream"])
         self.assertEqual(payload["options"], {"temperature": 0, "num_predict": 300})
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_message_abstain(self, mock_session_cls):
         mock_response = Mock()
         mock_response.status_code = 200
@@ -266,7 +266,7 @@ class TestOllamaClassification(unittest.TestCase):
         self.assertTrue(proposal.abstain)
         self.assertEqual(proposal.label_ids, [])
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_message_fallback_on_schema_rejection(self, mock_session_cls):
         mock_bad_request = Mock(status_code=400, text="format schema not supported")
         mock_success = Mock(
@@ -293,7 +293,7 @@ class TestOllamaClassification(unittest.TestCase):
         second_call = mock_session.post.call_args_list[1]
         self.assertEqual(second_call[1]["json"]["format"], "json")
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_classify_message_fallback_failure_preserves_error(self, mock_session_cls):
         mock_bad_request = Mock(status_code=400, text="format schema error")
         mock_fallback_fail = Mock(status_code=422, text="Unprocessable Entity")
@@ -305,7 +305,7 @@ class TestOllamaClassification(unittest.TestCase):
         self.assertIn("422", str(ctx.exception))
         self.assertIn("Unprocessable Entity", str(ctx.exception))
 
-    @patch("EmailMan.classification.requests.Session")
+    @patch("Mailroom.classification.requests.Session")
     def test_complete_json_ollama(self, mock_session_cls):
         mock_response = Mock()
         mock_response.status_code = 200
@@ -321,7 +321,7 @@ class TestOllamaClassification(unittest.TestCase):
         call_payload = mock_session.post.call_args[1]["json"]
         self.assertEqual(call_payload["format"], "json")
 
-    @patch("EmailMan.classification.TabbyClient.classify_message")
+    @patch("Mailroom.classification.TabbyClient.classify_message")
     def test_convenience_classify_message_with_provider(self, mock_classify):
         mock_classify.return_value = Proposal(label_ids=[], reason="test", abstain=True)
         res = classify_message(
@@ -333,7 +333,7 @@ class TestOllamaClassification(unittest.TestCase):
         self.assertTrue(res.abstain)
         mock_classify.assert_called_once()
 
-    @patch("EmailMan.classification.TabbyClient.probe_endpoint")
+    @patch("Mailroom.classification.TabbyClient.probe_endpoint")
     def test_convenience_probe_model_endpoint_with_provider(self, mock_probe):
         mock_probe.return_value = {"status": "ready"}
         res = probe_model_endpoint("http://127.0.0.1:11434", provider="ollama")
@@ -388,13 +388,13 @@ class TestHardwareProfilesAndConfig(unittest.TestCase):
         cfg.validate()
 
     def test_create_config_profile_defaults_to_standard(self):
-        from EmailMan import cli as cli_module
+        from Mailroom import cli as cli_module
 
         args = cli_module.create_cli_parser().parse_args(["create-config"])
         self.assertEqual(args.profile, "standard")
 
     def test_create_config_stdout_names_tabby_backend(self):
-        from EmailMan import cli as cli_module
+        from Mailroom import cli as cli_module
 
         target = os.path.join(self.temp_dir, "tabby", "config.json")
         args = cli_module.create_cli_parser().parse_args(
@@ -412,7 +412,7 @@ class TestHardwareProfilesAndConfig(unittest.TestCase):
         self.assertNotIn("use --profile tabby", out)
 
     def test_create_config_stdout_names_standard_backend(self):
-        from EmailMan import cli as cli_module
+        from Mailroom import cli as cli_module
 
         target = os.path.join(self.temp_dir, "standard", "config.json")
         args = cli_module.create_cli_parser().parse_args(["--config", target, "create-config"])
@@ -484,7 +484,7 @@ class TestOllamaCliAndApiOverrides(unittest.TestCase):
         self.tmp_dir.cleanup()
 
     def test_cli_classify_endpoint_override_clears_explicit_provider(self):
-        from EmailMan import cli as cli_module
+        from Mailroom import cli as cli_module
 
         args = cli_module.create_cli_parser().parse_args(
             [
@@ -498,7 +498,7 @@ class TestOllamaCliAndApiOverrides(unittest.TestCase):
             ]
         )
         with patch(
-            "EmailMan.classification.classify_message",
+            "Mailroom.classification.classify_message",
             return_value=Proposal(label_ids=["Type/Receipt"], reason="monthly", abstain=False),
         ) as mock_classify:
             code = cli_module.classify_cmd(args, self.config)
@@ -507,12 +507,12 @@ class TestOllamaCliAndApiOverrides(unittest.TestCase):
         self.assertEqual(mock_classify.call_args.kwargs["model_endpoint"], "http://127.0.0.1:11434")
 
     def test_api_classify_endpoint_override_clears_explicit_provider(self):
-        from EmailMan import app as app_module
+        from Mailroom import app as app_module
 
         app = app_module.create_app(self.config)
         client = app.test_client()
         with patch(
-            "EmailMan.classification.classify_message",
+            "Mailroom.classification.classify_message",
             return_value=Proposal(label_ids=["Type/Receipt"], reason="monthly", abstain=False),
         ) as mock_classify:
             res = client.post(
@@ -528,12 +528,12 @@ class TestOllamaCliAndApiOverrides(unittest.TestCase):
         self.assertEqual(mock_classify.call_args.kwargs["model_endpoint"], "http://127.0.0.1:11434")
 
     def test_api_classify_endpoint_override_with_explicit_provider(self):
-        from EmailMan import app as app_module
+        from Mailroom import app as app_module
 
         app = app_module.create_app(self.config)
         client = app.test_client()
         with patch(
-            "EmailMan.classification.classify_message",
+            "Mailroom.classification.classify_message",
             return_value=Proposal(label_ids=["Type/Receipt"], reason="monthly", abstain=False),
         ) as mock_classify:
             res = client.post(

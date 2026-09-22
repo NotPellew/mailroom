@@ -1,11 +1,11 @@
-"""Flask application for EmailMan review page."""
+"""Flask application for Mailroom review page."""
 
 import logging
 
 from flask import Flask
-from EmailMan.config import is_loopback_host, ConfigError
-from EmailMan.routes import bp as main_bp
-from EmailMan import security
+from Mailroom.config import is_loopback_host, ConfigError
+from Mailroom.routes import bp as main_bp
+from Mailroom import security
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ def create_app(config=None) -> Flask:
     # Per-instance CSRF token for same-origin state-changing requests.
     app.config["CSRF_TOKEN"] = security.generate_csrf_token()
     if config is not None:
-        app.config["EMAILMAN_CONFIG"] = config
+        app.config["MAILROOM_CONFIG"] = config
         app.config["DEBUG"] = config.debug
 
     # Register blueprint with review routes
@@ -55,7 +55,7 @@ def run_review_server(config, host: str = "127.0.0.1", port: int = 5000):
         )
 
     try:
-        from EmailMan.db import DB
+        from Mailroom.db import DB
         DB(config.database_path).close()
     except Exception as e:
         logger.warning("Could not initialize database or enforce body-cache expiry on review start: %s", e)

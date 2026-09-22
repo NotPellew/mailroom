@@ -1,4 +1,4 @@
-"""Gmail integration for EmailMan.
+"""Gmail integration for Mailroom.
 
 Reads messages, and (with the gmail.modify scope) creates labels and applies
 them to messages. Destructive operations are never called: no trash, delete,
@@ -21,7 +21,7 @@ try:
 except ImportError:
     keyring = None  # type: ignore[assignment]
 
-from EmailMan.config import Config
+from Mailroom.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ GMAIL_SCOPES = [GMAIL_MODIFY_SCOPE]
 # Historical read-only scope; kept for reference and older stored tokens.
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 
-KEYRING_SERVICE = "EmailMan"
+KEYRING_SERVICE = "Mailroom"
 # Non-secret pointer so later runs can look up the keyring entry (keyring cannot enumerate).
 LAST_EMAIL_FILENAME = ".last_gmail_email"
 DEFAULT_GMAIL_QUERY = "in:inbox -in:trash -in:spam -in:drafts"
@@ -122,7 +122,7 @@ def ensure_gmail_dependencies() -> None:
         missing_str = ", ".join(missing)
         raise GmailError(
             f"Gmail integration requires optional dependencies ({missing_str}). "
-            "Please install them using: pip install 'emailman[gmail]' or uv sync --extra gmail"
+            "Please install them using: pip install 'mailroom[gmail]' or uv sync --extra gmail"
         )
 
 
@@ -231,7 +231,7 @@ def _print_auth_notes(email: str) -> None:
         )
     print("Refresh token is stored securely via the OS credential store (DPAPI on Windows).")
     print("Scope: gmail.modify (read + label changes; no delete/archive).")
-    print("To reauthenticate later: python -m EmailMan auth --reauth")
+    print("To reauthenticate later: python -m Mailroom auth --reauth")
 
 
 def authenticate(config: Config, reauth: bool = False) -> str:
@@ -259,7 +259,7 @@ def authenticate(config: Config, reauth: bool = False) -> str:
             "Desktop OAuth client secrets not found.\n"
             f"1. Create OAuth 2.0 Client ID (Desktop app) in Google Cloud Console for the Gmail API.\n"
             f"2. Download the JSON and save it as: {config.config_dir / 'credentials.json'}\n"
-            f"3. Re-run: python -m EmailMan auth\n"
+            f"3. Re-run: python -m Mailroom auth\n"
             "The gmail.modify scope will be requested (read + label changes only; "
             "no delete, archive, or send)."
         )
@@ -268,7 +268,7 @@ def authenticate(config: Config, reauth: bool = False) -> str:
         flow = InstalledAppFlow.from_client_config(client_config, scopes=GMAIL_SCOPES)
         creds = flow.run_local_server(
             port=0,
-            authorization_prompt_message="Please authorize EmailMan (Gmail label management).",
+            authorization_prompt_message="Please authorize Mailroom (Gmail label management).",
             success_message="Authorization complete. You may close this window.",
             open_browser=True,
         )
@@ -314,7 +314,7 @@ def get_gmail_service(config: Config) -> Tuple[Any, str]:
 
     if not token_dict:
         raise GmailError(
-            "No Gmail credentials found. Run: python -m EmailMan auth\n"
+            "No Gmail credentials found. Run: python -m Mailroom auth\n"
             "This will open a browser for one-time OAuth consent."
         )
 
@@ -333,7 +333,7 @@ def get_gmail_service(config: Config) -> Tuple[Any, str]:
         if email:
             _delete_credentials(email)
         raise GmailError(
-            f"Token refresh failed for {email or 'unknown'}. Re-run: python -m EmailMan auth --reauth\nDetails: {e}"
+            f"Token refresh failed for {email or 'unknown'}. Re-run: python -m Mailroom auth --reauth\nDetails: {e}"
         ) from e
     except GmailError:
         raise

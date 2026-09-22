@@ -9,7 +9,7 @@ import secrets
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from EmailMan.classification import ClassificationError, TabbyClient
+from Mailroom.classification import ClassificationError, TabbyClient
 
 RETENTION_VALUES = ("ephemeral", "review", "keep", "30days", "1year", "forever")
 AXES = ("kind", "purchase", "retention")

@@ -13,11 +13,11 @@ import io
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
 
-from EmailMan import gmail as gmail_module
-from EmailMan import db as db_module
-from EmailMan import config as config_module
-from EmailMan import cli as cli_module
-from EmailMan import app as app_module
+from Mailroom import gmail as gmail_module
+from Mailroom import db as db_module
+from Mailroom import config as config_module
+from Mailroom import cli as cli_module
+from Mailroom import app as app_module
 
 
 def _b64url(s: str) -> str:
@@ -170,7 +170,7 @@ class TestUpsertAndDecisionPreservation(unittest.TestCase):
 
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.temp_dir, "EmailMan.db")
+        self.db_path = os.path.join(self.temp_dir, "Mailroom.db")
         self.db = db_module.DB(self.db_path)
         # seed account
         self.account_id = self.db.get_or_create_account("user@example.com")
@@ -454,7 +454,7 @@ class TestBodySizeTruncation(unittest.TestCase):
 class TestAccountMixingAndScanMetadata(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.temp_dir, "EmailMan.db")
+        self.db_path = os.path.join(self.temp_dir, "Mailroom.db")
         self.db = db_module.DB(self.db_path)
 
     def tearDown(self):
@@ -505,7 +505,7 @@ class TestAccountMixingAndScanMetadata(unittest.TestCase):
 class TestSchemaMigration(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.temp_dir, "EmailMan.db")
+        self.db_path = os.path.join(self.temp_dir, "Mailroom.db")
 
     def tearDown(self):
         import shutil
@@ -749,7 +749,7 @@ class TestFetchBoundedSample(unittest.TestCase):
 
     def test_persistent_get_failures_do_not_walk_the_mailbox(self):
         """Finding 5: failed gets count toward the cap / abort the scan."""
-        from EmailMan.gmail import GmailError
+        from Mailroom.gmail import GmailError
 
         class FakeExecute:
             def __init__(self, payload):
@@ -932,7 +932,7 @@ class TestScanAndClearCacheCli(unittest.TestCase):
     def test_scan_cmd_classifies_during_fetch(self):
         import threading
 
-        from EmailMan.classification import Proposal
+        from Mailroom.classification import Proposal
 
         decoded = [
             {
@@ -971,7 +971,7 @@ class TestScanAndClearCacheCli(unittest.TestCase):
         with patch.object(gmail_module, "get_gmail_service", return_value=(object(), "user@example.com")), \
              patch.object(gmail_module, "fetch_account_and_labels", return_value=({"emailAddress": "user@example.com"}, catalog)), \
              patch.object(gmail_module, "fetch_bounded_sample", side_effect=fake_fetch), \
-             patch("EmailMan.classification.TabbyClient.classify_message", fake_classify):
+             patch("Mailroom.classification.TabbyClient.classify_message", fake_classify):
             code = cli_module.scan_cmd(args, self.config)
         self.assertEqual(code, 0)
 
@@ -1014,7 +1014,7 @@ class TestScanAndClearCacheCli(unittest.TestCase):
         with patch.object(gmail_module, "get_gmail_service", return_value=(object(), "user@example.com")), \
              patch.object(gmail_module, "fetch_account_and_labels", return_value=({"emailAddress": "user@example.com"}, catalog)), \
              patch.object(gmail_module, "fetch_bounded_sample", side_effect=fake_fetch), \
-             patch("EmailMan.cli._classify_during_scan_worker", side_effect=dead_worker):
+             patch("Mailroom.cli._classify_during_scan_worker", side_effect=dead_worker):
             code = cli_module.scan_cmd(args, self.config)
         self.assertNotEqual(code, 0)
 
@@ -1135,7 +1135,7 @@ class TestAppliedLabelsStore(unittest.TestCase):
 
     def setUp(self):
         self.temp = tempfile.mkdtemp()
-        self.db = db_module.DB(os.path.join(self.temp, "EmailMan.db"))
+        self.db = db_module.DB(os.path.join(self.temp, "Mailroom.db"))
         self.acc = self.db.get_or_create_account("u@example.com")
         self.mid = self.db.upsert_message(
             self.acc,

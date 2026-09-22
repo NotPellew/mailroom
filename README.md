@@ -1,6 +1,6 @@
-# EmailMan
+# Mailroom
 
-EmailMan is a local-first tool for suggesting, reviewing, and correcting labels
+Mailroom is a local-first tool for suggesting, reviewing, and correcting labels
 for your mail. Classify local `.eml` files (or optionally a Gmail inbox) with a
 local model, review and correct the suggestions in a loopback web UI, then export
 the decisions as CSV or JSON. Inference stays on your machine.
@@ -22,35 +22,35 @@ start the app or `ollama serve`, then pull the default model:
 ollama pull qwen2.5:7b
 ```
 
-Then install EmailMan and create a config. Using a virtual environment avoids
+Then install Mailroom and create a config. Using a virtual environment avoids
 the externally-managed-environment error on recent Debian/Homebrew Python. With
 no flags, `create-config` uses the Ollama `standard` profile (`qwen2.5:7b` on
-`http://127.0.0.1:11434`); the `emailman` console script and `python -m EmailMan`
+`http://127.0.0.1:11434`); the `mailroom` console script and `python -m Mailroom`
 are equivalent:
 
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python -m pip install -e .
-python -m EmailMan create-config   # no flags = Ollama standard profile
-python -m EmailMan doctor          # checks Python, config, database, and the Ollama endpoint
-python -m EmailMan init-db
+python -m Mailroom create-config   # no flags = Ollama standard profile
+python -m Mailroom doctor          # checks Python, config, database, and the Ollama endpoint
+python -m Mailroom init-db
 ```
 
 Bring in local mail — either the bundled synthetic fixtures or your own `.eml`
 export (a single file or a folder, recursive by default):
 
 ```bash
-python -m EmailMan ingest EmailMan/fixtures
+python -m Mailroom ingest Mailroom/fixtures
 # ...or your own export:
-python -m EmailMan ingest ~/mail-export
+python -m Mailroom ingest ~/mail-export
 ```
 
 Suggest labels locally, then review and correct in the browser:
 
 ```bash
-python -m EmailMan classify --limit 10
-python -m EmailMan review
+python -m Mailroom classify --limit 10
+python -m Mailroom review
 ```
 
 Open http://127.0.0.1:5000 to accept, correct, or skip suggestions. Every choice
@@ -59,8 +59,8 @@ State-changing requests are same-origin and loopback-only. Export whenever you
 like, from the UI or headlessly:
 
 ```bash
-python -m EmailMan export --format csv --output choices.csv
-python -m EmailMan export --format json --output choices.json --include-skipped
+python -m Mailroom export --format csv --output choices.csv
+python -m Mailroom export --format json --output choices.json --include-skipped
 ```
 
 Nothing on this path contacts Gmail or asks for credentials.
@@ -87,15 +87,15 @@ into your decisions), install the optional extra and authenticate:
 
 ```bash
 pip install -e '.[gmail]'
-python -m EmailMan auth      # read + label changes only
-python -m EmailMan scan      # fetch a bounded Gmail sample into the same database
+python -m Mailroom auth      # read + label changes only
+python -m Mailroom scan      # fetch a bounded Gmail sample into the same database
 ```
 
 Place a Google Cloud **Desktop** OAuth client JSON as `credentials.json` in the
 data directory (or next to a custom `--config` file):
 
-- Windows: `%LOCALAPPDATA%\EmailMan\credentials.json`
-- Linux/macOS: `~/.config/emailman/credentials.json` (or `$XDG_CONFIG_HOME/emailman/`)
+- Windows: `%LOCALAPPDATA%\Mailroom\credentials.json`
+- Linux/macOS: `~/.config/mailroom/credentials.json` (or `$XDG_CONFIG_HOME/mailroom/`)
 
 `auth` requests `gmail.modify` (read plus label changes on messages). It never
 grants archive/delete/trash/spam/send, and the app only calls `labels.create`
@@ -104,7 +104,7 @@ Google Workspace / custom-domain accounts may need the client added as a trusted
 internal app or admin approval of the scope.
 
 If you authenticated before label support existed (a `gmail.readonly` token),
-run `python -m EmailMan auth --reauth` once before using `apply-labels`.
+run `python -m Mailroom auth --reauth` once before using `apply-labels`.
 
 Pushing decisions and pulling edits back is covered in **Applying labels in
 Gmail (optional)** below.
@@ -112,8 +112,8 @@ Gmail (optional)** below.
 ## Configuration
 
 Copy `config.example.json` or edit the config in the data directory
-(`%LOCALAPPDATA%\EmailMan\config.json` on Windows,
-`~/.config/emailman/config.json` on Linux):
+(`%LOCALAPPDATA%\Mailroom\config.json` on Windows,
+`~/.config/mailroom/config.json` on Linux):
 
 ```json
 {
@@ -175,9 +175,9 @@ input. Direct mode never opens the database, never touches Gmail, and prints a
 single JSON object to stdout:
 
 ```bash
-python -m EmailMan classify --text "Your receipt for order #1: $19.99"
-python -m EmailMan classify --file invoice.eml
-printf '%s' "$BODY" | python -m EmailMan classify --stdin
+python -m Mailroom classify --text "Your receipt for order #1: $19.99"
+python -m Mailroom classify --file invoice.eml
+printf '%s' "$BODY" | python -m Mailroom classify --stdin
 ```
 
 The JSON contains `label_ids`, `label_names`, `reason`, `abstain`, and
@@ -188,7 +188,7 @@ The JSON contains `label_ids`, `label_names`, `reason`, `abstain`, and
 The same pipeline is available as a library:
 
 ```python
-from EmailMan import EmailClassifier, Config, Proposal
+from Mailroom import EmailClassifier, Config, Proposal
 
 classifier = EmailClassifier(config=Config())  # config optional; no Gmail
 proposal: Proposal = classifier.classify(
@@ -244,13 +244,13 @@ Decisions can be pushed to Gmail and edited there instead of in the web UI.
 This is the only path that writes to Gmail, and it requires an explicit
 `--apply`; the review web UI never writes to Gmail.
 
-1. `python -m EmailMan apply-labels` — dry run. Writes `apply-labels-plan.csv`
+1. `python -m Mailroom apply-labels` — dry run. Writes `apply-labels-plan.csv`
    and lists the labels it would create. Nothing is written to Gmail.
-2. `python -m EmailMan apply-labels --apply` — creates any missing labels (named
+2. `python -m Mailroom apply-labels --apply` — creates any missing labels (named
    exactly like your local ids, e.g. `Type/Receipt`, `Retention/30Days`) and
    adds them to messages with an accepted/corrected decision.
 3. Triage in Gmail: remove or add the labels you disagree with.
-4. `python -m EmailMan sync-labels` — reads the labels back. A message you did
+4. `python -m Mailroom sync-labels` — reads the labels back. A message you did
    not touch stays `accepted`; anything you changed is saved as a `corrected`
    decision, and the snapshot is updated so the next run is quiet.
 
@@ -261,10 +261,10 @@ or marked spam, and retention labels are labels only — no mail is deleted.
 
 Data is stored in the per-user app directory (or the directory of `--config`):
 
-- Windows: `%LOCALAPPDATA%\EmailMan\`
-- Linux/macOS: `~/.config/emailman/` (or `$XDG_CONFIG_HOME/emailman/`)
+- Windows: `%LOCALAPPDATA%\Mailroom\`
+- Linux/macOS: `~/.config/mailroom/` (or `$XDG_CONFIG_HOME/mailroom/`)
 
-- `EmailMan.db` — SQLite database
+- `Mailroom.db` — SQLite database
 - `config.json` — Application configuration
 - `credentials.json` — Desktop OAuth client secrets (you supply this; keep it out of source control)
 - `.last_gmail_email` — non-secret pointer used to load the stored refresh token
@@ -296,11 +296,11 @@ python -m playwright install chromium
 python -m pytest -m browser -v
 ```
 
-Set `EMAILMAN_REQUIRE_BROWSER=1` to make a missing Playwright or Chromium a hard
+Set `MAILROOM_REQUIRE_BROWSER=1` to make a missing Playwright or Chromium a hard
 failure instead of a skip. CI uses it so the browser job cannot pass without
 executing the suite:
 
 ```bash
-EMAILMAN_REQUIRE_BROWSER=1 python -m pytest -m browser -v
+MAILROOM_REQUIRE_BROWSER=1 python -m pytest -m browser -v
 ```
 

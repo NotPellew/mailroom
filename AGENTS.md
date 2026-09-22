@@ -1,4 +1,4 @@
-# EmailMan
+# Mailroom
 
 ## Goal and scope
 - V1 suggests labels for local mail (and, optionally, Gmail) for local review, correction, and export; `PLAN.md` provides optional background.
