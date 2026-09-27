@@ -11,6 +11,7 @@
 - Always implement changes on a dedicated branch named `issue-<number>-<slug>`; never commit feature work directly to `main`.
 - Open a pull request with `gh pr create` linked to the issue (`Closes #<number>`).
 - Include test execution and verification evidence directly in the PR description so it serves as the permanent implementation record.
+- Before finalizing a test plan or implementation, verify that proposed tests test end-to-end functionality through public boundaries (CLI, public APIs, files, DB) and do not assert on internal private helpers or intermediate formatting.
 - Run an independent review audit before finalizing a feature PR, evaluating correctness, security, test coverage, DRY, and KISS. Include review findings and evidence in the PR.
 - Keep user instructions in `README.md`, development rules here, and architecture in `docs/arc42.md`. Update `docs/arc42.md` when architectural decisions or open risks change.
 

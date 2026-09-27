@@ -219,10 +219,16 @@ def load_template_file(template_path: Union[str, Path]) -> List[Dict[str, Any]]:
     return labels
 
 
+DEFAULT_SCAN_QUERY: str = "in:inbox -in:trash -in:spam -in:drafts"
+DOCUMENTS_ATTACHMENT_QUERY: str = "has:attachment (filename:pdf OR filename:xml)"
+
+
 class Config:
     """Configuration management."""
 
     HARDWARE_PROFILES = HARDWARE_PROFILES
+    DEFAULT_SCAN_QUERY = DEFAULT_SCAN_QUERY
+    DOCUMENTS_ATTACHMENT_QUERY = DOCUMENTS_ATTACHMENT_QUERY
 
     # Default label definitions
     DEFAULT_LABELS: List[Dict[str, Any]] = [
@@ -408,6 +414,7 @@ class Config:
         config_path: Optional[str] = None,
         profile: Optional[str] = None,
         labels: Optional[List[Dict[str, Any]]] = None,
+        scan_query: Optional[str] = None,
     ):
         """Initialize configuration.
 
@@ -415,6 +422,7 @@ class Config:
             config_path: Path to config file (defaults to the per-user app dir)
             profile: Optional hardware profile name for default configuration
             labels: Optional custom label definitions overriding defaults
+            scan_query: Optional custom Gmail scan query
         """
         if config_path is None:
             config_path = str(default_app_dir() / "config.json")
@@ -428,12 +436,13 @@ class Config:
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
         # Load or create config
-        self._load_config(profile=profile, labels=labels)
+        self._load_config(profile=profile, labels=labels, scan_query=scan_query)
 
     def _load_config(
         self,
         profile: Optional[str] = None,
         labels: Optional[List[Dict[str, Any]]] = None,
+        scan_query: Optional[str] = None,
     ):
         """Load configuration from file or use defaults."""
         if self.config_path.exists():
@@ -441,9 +450,12 @@ class Config:
                 self._config = json.load(f)
             if labels is not None:
                 self._config["labels"] = labels
+            if scan_query is not None:
+                self._config["scan_query"] = scan_query
+            if labels is not None or scan_query is not None:
                 self.validate()
         else:
-            self._config = self._default_config(profile=profile, labels=labels)
+            self._config = self._default_config(profile=profile, labels=labels, scan_query=scan_query)
             self.validate()
             # Save the default configuration
             self.save()
@@ -452,12 +464,13 @@ class Config:
         self,
         profile: Optional[str] = None,
         labels: Optional[List[Dict[str, Any]]] = None,
+        scan_query: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Return default configuration."""
         selected_profile = self.HARDWARE_PROFILES.get(
             profile or "standard", self.HARDWARE_PROFILES["standard"]
         )
-        return {
+        cfg: Dict[str, Any] = {
             "model": {
                 "endpoint": selected_profile["endpoint"],
                 "id": selected_profile["id"],
@@ -468,6 +481,9 @@ class Config:
             "labels": labels if labels is not None else self.DEFAULT_LABELS,
             "debug": False,
         }
+        if scan_query is not None:
+            cfg["scan_query"] = scan_query
+        return cfg
 
     def _write_config(self) -> None:
         """Write the configuration atomically: temp file in the same dir + replace."""
@@ -572,6 +588,12 @@ class Config:
         # Validate the same label list that Config.labels returns
         validate_label_definitions(self.labels)
 
+        # Validate scan_query if present
+        if "scan_query" in self._config:
+            scan_query = self._config["scan_query"]
+            if not isinstance(scan_query, str) or not scan_query.strip():
+                raise ConfigError("scan_query must be a non-empty string")
+
         # Check debug mode
         debug = self._config.get("debug", False)
         if not isinstance(debug, bool):
@@ -632,6 +654,11 @@ class Config:
     def debug(self) -> bool:
         """Get debug mode."""
         return self._config.get("debug", False)
+
+    @property
+    def scan_query(self) -> str:
+        """Get Gmail scan query."""
+        return self._config.get("scan_query") or self.DEFAULT_SCAN_QUERY
 
     @property
     def database_path(self) -> str:

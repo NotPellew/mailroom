@@ -92,7 +92,8 @@ taxonomies via local JSON template files:
   classification target (default: `Rechnungen`), tailored for lightweight local models
   (`qwen2.5:3b`, 1.5B models) and single-purpose workflows (such as downstream document
   processing or BelegDoc integration). Lightweight models classify binary targets faster
-  and with near-zero false abstentions.
+  and with near-zero false abstentions. Also automatically sets `scan_query` to
+  `"has:attachment (filename:pdf OR filename:xml)"` so Gmail scans focus on document attachments.
 
 ```bash
 # Focused single-target invoice/receipt setup with default label (Rechnungen):
@@ -169,6 +170,7 @@ Copy `config.example.json` or edit the config in the data directory
   },
   "timeout": 30.0,
   "sample_limit": 100,
+  "scan_query": "in:inbox -in:trash -in:spam -in:drafts",
   "labels": [
     {
       "id": "Type/Receipt",
@@ -196,7 +198,7 @@ Copy `config.example.json` or edit the config in the data directory
 | Command | Description |
 |---|---|
 | `auth` | *Optional Gmail sync* — authenticate with Gmail (`gmail.modify`: read + label changes; stores refresh token in the OS credential store). `--reauth` forces a new browser login. |
-| `scan` | *Optional Gmail sync* — fetch a bounded inbox sample (default 100, cap 1000) as they arrive. `--classify` or `--suggest-labels` (not both) run local inference while download continues |
+| `scan` | *Optional Gmail sync* — fetch a bounded inbox sample (default 100, cap 1000) using `scan_query` or `--query`. `--documents-only` filters for PDF/XML attachments. `--classify` or `--suggest-labels` (not both) run local inference while download continues |
 | `ingest` | Ingest local `.eml` files or directories into SQLite offline (`<path>`, `--account`, `--limit`, `--no-recursive`) — the primary, Gmail-free path |
 | `classify` | Classify locally. Cached mail: `--message-id` (one) or `--limit N` (messages with no proposal yet; max 1000), plus `--reclassify`/`--offset`. Direct, no database: `--text`, `--file`, or `--stdin`; prints one JSON object |
 | `suggest-labels` | Propose a personal label list from cached mail (local model; timestamped JSON; does not write Gmail) |
