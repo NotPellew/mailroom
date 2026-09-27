@@ -18,6 +18,7 @@
 - Prefer Python, SQLite, and a small local review page bound to loopback.
 - Reuse locally installed models (Ollama, TabbyAPI, or another loopback OpenAI-compatible server); keep inference local with no cloud fallback.
 - Choose simple solutions and avoid new services, dependencies, or model downloads unless justified.
+- Keep taxonomies and domain configurations user-customizable via templates or minimal archetypes; avoid maintaining large hardcoded preset catalogs in core code.
 - Validate model output against allowed labels. Preserve user corrections across reruns.
 
 ## Data and verification
@@ -36,6 +37,11 @@
   protected.
 - After an approved change, rerun the full suite and confirm all 254+ tests
   pass before continuing.
+- **End-to-end test design**: New tests must test end-to-end functionality
+  through public entry points (CLI parser and commands, public API facades,
+  files on disk). What is in between (internal implementation details, private
+  helpers, intermediate methods, prompt string formatting) must be exchangeable
+  without tests failing. Avoid white-box assertions on private internal methods.
 
 ## Review and defect discipline
 - Every code review must rigorously check for **DRY** (Don't Repeat Yourself — eliminating duplicate validation, redundant data checks, and copy-pasted logic across layers) and **KISS** (Keep It Simple, Stupid — avoiding premature abstractions, complex indirection, or unnecessary configuration).
