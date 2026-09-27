@@ -164,6 +164,32 @@ class TestDoctorDiagnostics(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("[✓] Stored Gmail credentials: authorized with gmail.modify scope (user@example.com)", output)
 
+    def test_doctor_oauth_scope_validation_null_scopes(self):
+        """doctor handles None/null scopes defensively without TypeError."""
+        args = argparse.Namespace(strict=False)
+        mock_probe = {
+            "endpoint": self.cfg.model_endpoint,
+            "model_id": self.cfg.model_id,
+            "status": "ready",
+            "provider": "tabby",
+        }
+        null_scope_creds = {
+            "token": "tok123",
+            "refresh_token": "ref123",
+            "scopes": None,
+        }
+        stdout = io.StringIO()
+        with patch("sys.stdout", stdout):
+            with patch("Mailroom.classification.probe_model_endpoint", return_value=mock_probe):
+                with patch("Mailroom.gmail.check_gmail_dependencies", return_value=(True, [])):
+                    with patch("Mailroom.gmail._read_last_email", return_value="user@example.com"):
+                        with patch("Mailroom.gmail._load_credentials", return_value=null_scope_creds):
+                            code = cli_module.doctor_cmd(args, self.cfg)
+
+        output = stdout.getvalue()
+        self.assertEqual(code, 0)
+        self.assertIn("[!] Stored Gmail credentials lack gmail.modify scope. Run: python -m Mailroom auth --reauth", output)
+
 
 class TestInteractiveSetupWizard(unittest.TestCase):
     """Test the mailroom setup onboarding wizard."""
@@ -373,6 +399,76 @@ class TestInteractiveSetupWizard(unittest.TestCase):
             output = stdout.getvalue()
             self.assertEqual(code, 130)
             self.assertIn("Setup cancelled", output)
+
+    def test_setup_interactive_gmail_auth_prompt_declined(self):
+        """setup skips auth when credentials.json exists but user declines prompt."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg_path = Path(tmpdir) / "config.json"
+            cred_path = Path(tmpdir) / "credentials.json"
+            cred_path.write_text(json.dumps({"installed": {"client_id": "test"}}))
+
+            parser = cli_module.create_cli_parser()
+            args = parser.parse_args(["--config", str(cfg_path), "setup"])
+
+            # Inputs: profile 1, taxonomy 1, auth prompt 'n'
+            user_inputs = ["1", "1", "n"]
+            mock_probe = {
+                "endpoint": "http://127.0.0.1:11434",
+                "model_id": "qwen2.5:7b",
+                "status": "ready",
+                "provider": "ollama",
+                "available_models": ["qwen2.5:7b"],
+            }
+
+            stdout = io.StringIO()
+            with patch("sys.stdout", stdout):
+                with patch("sys.stdin.isatty", return_value=True):
+                    with patch("builtins.input", side_effect=user_inputs):
+                        with patch("Mailroom.classification.probe_model_endpoint", return_value=mock_probe):
+                            with patch("Mailroom.gmail.check_gmail_dependencies", return_value=(True, [])):
+                                with patch("Mailroom.gmail._read_last_email", return_value=None):
+                                    code = cli_module.setup_cmd(args)
+
+            output = stdout.getvalue()
+            self.assertEqual(code, 0)
+            self.assertIn("Found OAuth client credentials at", output)
+            self.assertIn("Skipping Gmail authentication for now", output)
+
+    def test_setup_interactive_gmail_auth_prompt_accepted(self):
+        """setup executes authenticate when credentials.json exists and user confirms prompt."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg_path = Path(tmpdir) / "config.json"
+            cred_path = Path(tmpdir) / "credentials.json"
+            cred_path.write_text(json.dumps({"installed": {"client_id": "test"}}))
+
+            parser = cli_module.create_cli_parser()
+            args = parser.parse_args(["--config", str(cfg_path), "setup"])
+
+            # Inputs: profile 1, taxonomy 1, auth prompt 'y'
+            user_inputs = ["1", "1", "y"]
+            mock_probe = {
+                "endpoint": "http://127.0.0.1:11434",
+                "model_id": "qwen2.5:7b",
+                "status": "ready",
+                "provider": "ollama",
+                "available_models": ["qwen2.5:7b"],
+            }
+
+            stdout = io.StringIO()
+            with patch("sys.stdout", stdout):
+                with patch("sys.stdin.isatty", return_value=True):
+                    with patch("builtins.input", side_effect=user_inputs):
+                        with patch("Mailroom.classification.probe_model_endpoint", return_value=mock_probe):
+                            with patch("Mailroom.gmail.check_gmail_dependencies", return_value=(True, [])):
+                                with patch("Mailroom.gmail._read_last_email", return_value=None):
+                                    with patch("Mailroom.gmail.authenticate", return_value="user@example.com") as mock_auth:
+                                        code = cli_module.setup_cmd(args)
+
+            output = stdout.getvalue()
+            self.assertEqual(code, 0)
+            self.assertIn("Found OAuth client credentials at", output)
+            self.assertIn("Gmail authentication completed successfully", output)
+            mock_auth.assert_called_once()
 
 
 if __name__ == "__main__":

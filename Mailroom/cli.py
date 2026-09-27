@@ -506,6 +506,14 @@ def run_server(args, config):
         return 1
 
 
+def _is_model_installed(model_id: str, available_models: list) -> bool:
+    """Check if model_id is present in available Ollama models, accounting for tags."""
+    return any(
+        m == model_id or m.startswith(f"{model_id}:") or model_id.startswith(f"{m}:")
+        for m in available_models
+    )
+
+
 def doctor_cmd(args, config) -> int:
     """Check environment health: loopback accessibility, backend availability, and database status."""
     import platform
@@ -568,7 +576,7 @@ def doctor_cmd(args, config) -> int:
             if stored_email:
                 creds_dict = _load_credentials(stored_email)
                 if creds_dict:
-                    scopes = creds_dict.get("scopes", [])
+                    scopes = creds_dict.get("scopes") or []
                     if isinstance(scopes, str):
                         scopes = scopes.split()
                     if GMAIL_MODIFY_SCOPE in scopes:
@@ -657,10 +665,7 @@ def doctor_cmd(args, config) -> int:
 
             if detected_prov == PROVIDER_OLLAMA:
                 available = probe.get("available_models", [])
-                model_matched = any(
-                    m == model_id or m.startswith(f"{model_id}:") or model_id.startswith(f"{m}:")
-                    for m in available
-                )
+                model_matched = _is_model_installed(model_id, available)
                 if model_matched:
                     print(f"[✓] Model presence: '{model_id}' found in Ollama local library")
                 else:
@@ -668,7 +673,6 @@ def doctor_cmd(args, config) -> int:
                     print(f"    [!] Model '{model_id}' is not installed locally. Run: ollama pull {model_id}")
                     if available:
                         print(f"    Available models in Ollama: {', '.join(available)}")
-                    print(f"    Run 'ollama pull {model_id}' to download the model.")
                     has_warnings = True
             else:
                 if active_model == "unknown":
@@ -835,10 +839,7 @@ def setup_cmd(args, config=None) -> int:
             detected_prov = probe.get("provider", "unknown")
             if detected_prov == PROVIDER_OLLAMA:
                 available = probe.get("available_models", [])
-                model_matched = any(
-                    m == model_id or m.startswith(f"{model_id}:") or model_id.startswith(f"{m}:")
-                    for m in available
-                )
+                model_matched = _is_model_installed(model_id, available)
                 if model_matched:
                     print(f"[✓] Backend reachable and model '{model_id}' is installed locally in Ollama.\n")
                 else:
@@ -2132,7 +2133,6 @@ def main():
 
     # Execute command
     commands = {
-        "setup": setup_cmd,
         "doctor": doctor_cmd,
         "auth": auth_cmd,
         "scan": scan_cmd,
