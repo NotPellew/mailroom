@@ -36,7 +36,31 @@ GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 KEYRING_SERVICE = "Mailroom"
 # Non-secret pointer so later runs can look up the keyring entry (keyring cannot enumerate).
 LAST_EMAIL_FILENAME = ".last_gmail_email"
-DEFAULT_GMAIL_QUERY = "in:inbox -in:trash -in:spam -in:drafts"
+DEFAULT_GMAIL_QUERY = Config.DEFAULT_SCAN_QUERY
+DOCUMENTS_ATTACHMENT_QUERY = Config.DOCUMENTS_ATTACHMENT_QUERY
+
+
+def resolve_scan_query(
+    config_query: Optional[str] = None,
+    cli_query: Optional[str] = None,
+    documents_only: bool = False,
+    default_query: Optional[str] = None,
+) -> str:
+    """Resolve the Gmail query string based on CLI flags and configuration.
+
+    Precedence:
+    1. Explicit cli_query overrides config_query.
+    2. If neither cli_query nor config_query is provided, defaults to default_query or DEFAULT_GMAIL_QUERY.
+    3. If documents_only is True, ensures the document attachment filter
+       is included (appended if not already present).
+    """
+    fallback = default_query or DEFAULT_GMAIL_QUERY
+    base = (cli_query.strip() if cli_query and cli_query.strip() else (config_query or fallback)).strip()
+    if documents_only and DOCUMENTS_ATTACHMENT_QUERY not in base:
+        base = f"{base} {DOCUMENTS_ATTACHMENT_QUERY}".strip()
+    return base
+
+
 BODY_PREVIEW_LIMIT = 4000
 # Cap encoded body data before base64-decoding so a huge part cannot allocate
 # an unbounded string just to be trimmed afterwards.

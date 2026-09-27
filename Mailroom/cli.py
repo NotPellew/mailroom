@@ -162,7 +162,12 @@ Optional Gmail sync (needs OAuth credentials and the [gmail] extra):
     scan_parser.add_argument(
         "--query",
         default=None,
-        help=f"Gmail search query (default: {DEFAULT_GMAIL_QUERY})",
+        help=f"Gmail search query (overrides config scan_query; default: config scan_query or {DEFAULT_GMAIL_QUERY})",
+    )
+    scan_parser.add_argument(
+        "--documents-only",
+        action="store_true",
+        help="Filter for messages with document attachments: ensures 'has:attachment (filename:pdf OR filename:xml)' is included in the query",
     )
     scan_parser.add_argument(
         "--limit",
@@ -701,9 +706,13 @@ def create_config_cmd(args):
         print("Edit it to customize settings.")
         return 0
 
+    scan_query = None
+    if taxonomy == "single-label":
+        scan_query = Config.DOCUMENTS_ATTACHMENT_QUERY
+
     profile = getattr(args, "profile", "standard")
     try:
-        Config(str(target_path), profile=profile, labels=labels)
+        Config(str(target_path), profile=profile, labels=labels, scan_query=scan_query)
     except ConfigError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -933,10 +942,16 @@ def scan_cmd(args, config):
     per_month = getattr(args, "per_month", None)
     years = max(1, int(getattr(args, "years", 3) or 3))
 
+    documents_only = bool(getattr(args, "documents_only", False))
+
     if per_month:
         per_month = max(1, min(int(per_month), gmail_module.SCAN_MAX_MESSAGES))
         windows = gmail_module.month_windows(years)
-        base_query = args.query if args.query else gmail_module.MONTHLY_QUERY_BASE
+        base_query = gmail_module.resolve_scan_query(
+            cli_query=args.query,
+            documents_only=documents_only,
+            default_query=gmail_module.MONTHLY_QUERY_BASE,
+        )
         jobs = [
             (gmail_module.gmail_month_query(start, end, base_query), per_month, start.strftime("%Y-%m"))
             for start, end in windows
@@ -947,7 +962,11 @@ def scan_cmd(args, config):
             f"({years} year(s), query='{base_query}') ..."
         )
     else:
-        query = args.query if args.query else gmail_module.DEFAULT_GMAIL_QUERY
+        query = gmail_module.resolve_scan_query(
+            config_query=config.scan_query,
+            cli_query=args.query,
+            documents_only=documents_only,
+        )
         jobs = [(query, limit, "newest")]
         print(f"Scanning Gmail for account {email} (query='{query}', limit={limit}) ...")
     if do_classify:

@@ -56,7 +56,7 @@ flowchart LR
 - **Structured outputs:** Structured JSON schemas (Ollama `format: PROPOSAL_JSON_SCHEMA` and JSON mode fallback) enforce deterministic outputs with label IDs, reasons, and abstain flags.
 - **Bounded data retention:** 7-day auto-expiry for cached email bodies in SQLite; exports exclude email bodies and reasons.
 - **Additive database migrations:** Lightweight SQLite schema upgrades without third-party migration frameworks.
-- **Taxonomy archetypes & custom templates:** Rather than proliferating rigid presets, Mailroom provides two core archetypes (`standard` multi-axis and `single-label` binary) alongside custom local JSON template support. Single-label configurations simplify prompt structure for lightweight models (`qwen2.5:3b`, 1.5B models) and single-purpose workflows (e.g. BelegDoc receipt processing), drastically reducing false abstentions. Remote template URLs are strictly rejected to maintain local-first network isolation.
+- **Taxonomy archetypes & custom templates:** Rather than proliferating rigid presets, Mailroom provides two core archetypes (`standard` multi-axis and `single-label` binary) alongside custom local JSON template support. Single-label configurations simplify prompt structure for lightweight models (`qwen2.5:3b`, 1.5B models) and single-purpose workflows (e.g. BelegDoc receipt processing), drastically reducing false abstentions. The single-label archetype automatically sets `scan_query` to `"has:attachment (filename:pdf OR filename:xml)"` to focus Gmail inbox scans on relevant document attachments, complemented by an on-demand `--documents-only` CLI shortcut. Remote template URLs are strictly rejected to maintain local-first network isolation.
 
 ## 5. Building block view
 
@@ -79,7 +79,7 @@ These are module boundaries within a single Python package, not distributed micr
 1. **Diagnostic & Configuration Check (`mailroom doctor`):**
    Verifies local environment, configuration validity, database schema status, loopback safety, and model availability.
 2. **Ingestion (`mailroom ingest` or `mailroom scan`):**
-   The default local path is `ingest`, which loads local `.eml` files or directories into SQLite offline without requiring Gmail credentials. Optionally, `scan` connects to Gmail via OAuth, queries inbox with bounded limit (default 100), extracts MIME parts safely into inert plain text, flags truncation, and upserts messages into SQLite without disturbing existing decisions.
+   The default local path is `ingest`, which loads local `.eml` files or directories into SQLite offline without requiring Gmail credentials. Optionally, `scan` connects to Gmail via OAuth, queries inbox with bounded limit (default 100) using `config.scan_query` or `--query` (optionally filtered by `--documents-only`), extracts MIME parts safely into inert plain text, flags truncation, and upserts messages into SQLite without disturbing existing decisions.
 3. **Classification (`mailroom classify` or `scan --classify`):**
    Probes loopback inference endpoint, constructs nonce-fenced prompt with label vocabulary, queries model for structured JSON, validates returned label IDs against allowed list, and records versioned proposals.
 4. **Human Review & Correction (`mailroom review`):**
@@ -158,6 +158,7 @@ These are module boundaries within a single Python package, not distributed micr
   - **Issue #15:** *Multi-account support and safe account switching* (supporting multiple Gmail accounts cleanly without raising single-account errors).
   - **Issue #19:** *Add opt-in Jev (TypeSafe System One) classifier backend* (explicitly approved user-configured remote provider behind a consent gate; local loopback inference stays the default).
 - **Recently Implemented (Closed Issues):**
+  - **Issue #6:** *Add configurable scan query and document-attachment filter shortcut to scan* (persistent `scan_query` in `config.json`, single-label archetype document attachment filter default, on-demand `--documents-only` CLI shortcut, and robust query precedence resolution).
   - **Issue #23:** *Configure label definitions from the review web UI* (add/edit/remove labels from the review page via validated, atomic `config.json` writes with a rolling backup; deleting a label referenced by a saved decision is refused with a count; changes apply without a server restart).
   - **Issue #12:** *Automated browser inertness and UI link verification suite* (opt-in `browser` extra with Playwright; headless Chromium drives the real review page to prove injected payloads stay inert text, zero external requests are made, Gmail links resolve to the exact expected URLs, and the loopback security headers are present; `MAILROOM_REQUIRE_BROWSER=1` turns a missing browser into a CI failure rather than a skip).
   - **Issue #5:** *Make Gmail write operations strictly optional and local-first by default* (local-only vs Gmail `mode` on `/api/status` from account rows, review-UI mode banner, local-first CLI help and `create-config` next steps, and Gmail writes remain behind `apply-labels --apply`).

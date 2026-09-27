@@ -6,6 +6,7 @@
   },
   "timeout": 30.0,
   "sample_limit": 100,
+  "scan_query": "in:inbox -in:trash -in:spam -in:drafts",
   "labels": [
     {
       "id": "Type/Newsletter",
