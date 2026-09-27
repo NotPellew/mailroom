@@ -62,7 +62,7 @@ flowchart LR
 
 | Responsibility | Boundary |
 | --- | --- |
-| CLI (`Mailroom.cli`) | User commands (`auth`, `scan`, `ingest`, `classify`, `review`, `export`, `apply-labels`, `sync-labels`, `doctor`, `create-config`), argument parsing, exit codes. |
+| CLI (`Mailroom.cli`) | User commands (`setup`, `auth`, `scan`, `ingest`, `classify`, `review`, `export`, `apply-labels`, `sync-labels`, `doctor`, `create-config`), argument parsing, exit codes. |
 | Web Review UI (`Mailroom.routes`, `Mailroom.templates`) | Loopback Flask app, server-rendered HTML template, JSON APIs for review/decisions/conflicts and label-definition edits, CSRF and Host validation. |
 | Classification Engine (`Mailroom.classification`) | Local inference clients (Ollama, Tabby, OpenAI-compatible), endpoint auto-detection, nonce prompt construction, JSON output parsing, validation. |
 | Standalone Classification API (`Mailroom.classifier`) | High-level `EmailClassifier` facade over the classification engine; direct CLI (`--text`/`--file`/`--stdin`) and stateless `POST /api/classify` payloads with no database or Gmail dependency. |
@@ -70,14 +70,14 @@ flowchart LR
 | Local Persistence (`Mailroom.db`) | SQLite schema management (v1-v6), atomic transactions, WAL mode, decoupled message upserts, proposal tracking, decision records with label constraint validation, 7-day body cache expiry. |
 | Gmail Integration (`Mailroom.gmail`) | Desktop OAuth flow, OS keyring token management, bounded message fetching, RFC 2822 MIME decoding, label creation and modification. |
 | Security & Sanitization (`Mailroom.security`, `Mailroom.export`) | Loopback Host/Origin/Referer verification, CSRF token generation/check, CSV spreadsheet formula neutralization. |
-| Environment Diagnostics (`Mailroom.doctor`) | Non-destructive read-only health checks for Python runtime, configuration, database schema, loopback safety, backend availability, and optional dependencies. |
+| Environment Diagnostics (`Mailroom.doctor`) | Non-destructive read-only health checks for Python runtime, configuration, database schema, loopback safety, Ollama model presence, OAuth scopes, and optional dependencies. |
 
 These are module boundaries within a single Python package, not distributed microservices.
 
 ## 6. Runtime view
 
-1. **Diagnostic & Configuration Check (`mailroom doctor`):**
-   Verifies local environment, configuration validity, database schema status, loopback safety, and model availability.
+1. **Diagnostic & Configuration Check (`mailroom doctor` / `mailroom setup`):**
+   Interactive `setup` guides first-time users through hardware profile selection, taxonomy archetype, database initialization, and loopback model presence. `mailroom doctor` provides non-destructive inspection of environment health, configuration validity, database schema status, model availability via Ollama `/api/tags`, client credentials structure, and keyring token OAuth scopes.
 2. **Ingestion (`mailroom ingest` or `mailroom scan`):**
    The default local path is `ingest`, which loads local `.eml` files or directories into SQLite offline without requiring Gmail credentials. Optionally, `scan` connects to Gmail via OAuth, queries inbox with bounded limit (default 100) using `config.scan_query` or `--query` (optionally filtered by `--documents-only`), extracts MIME parts safely into inert plain text, flags truncation, and upserts messages into SQLite without disturbing existing decisions.
 3. **Classification (`mailroom classify` or `scan --classify`):**

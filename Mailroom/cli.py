@@ -24,6 +24,7 @@ def create_cli_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Local-first workflow (no Gmail account needed):
+  setup           Interactive onboarding wizard for first-time configuration
   create-config   Create the configuration file
   init-db         Initialize the database
   ingest          Ingest local .eml files or directories into SQLite
@@ -54,6 +55,17 @@ Optional Gmail sync (needs OAuth credentials and the [gmail] extra):
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+
+    # setup
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="Interactive onboarding wizard: configure hardware profile, taxonomy, database, and backend",
+    )
+    setup_parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Exit cleanly with instructions if run non-interactively or in automated scripts",
+    )
 
     # doctor
     doctor_parser = subparsers.add_parser(
@@ -494,6 +506,14 @@ def run_server(args, config):
         return 1
 
 
+def _is_model_installed(model_id: str, available_models: list) -> bool:
+    """Check if model_id is present in available Ollama models, accounting for tags."""
+    return any(
+        m == model_id or m.startswith(f"{model_id}:") or model_id.startswith(f"{m}:")
+        for m in available_models
+    )
+
+
 def doctor_cmd(args, config) -> int:
     """Check environment health: loopback accessibility, backend availability, and database status."""
     import platform
@@ -528,6 +548,48 @@ def doctor_cmd(args, config) -> int:
         print("    Core local classification and review work offline.")
         print("    To enable Gmail sync, install: pip install 'mailroom[gmail]'")
         if strict:
+            has_warnings = True
+
+    # Check client credentials file (credentials.json)
+    cred_file = config.config_dir / "credentials.json"
+    if cred_file.exists():
+        try:
+            with open(cred_file, "r", encoding="utf-8") as f:
+                cred_data = json.load(f)
+            if isinstance(cred_data, dict) and "installed" in cred_data and isinstance(cred_data["installed"], dict):
+                print(f"[✓] Client credentials: {cred_file.name} valid (desktop 'installed' client)")
+            else:
+                print(f"[!] Client credentials: '{cred_file.name}' is missing the 'installed' desktop client block.")
+                print("    (Ensure OAuth credentials were created as a 'Desktop app' in Google Cloud Console)")
+                has_warnings = True
+        except Exception as e:
+            print(f"[!] Client credentials: '{cred_file.name}' exists but contains invalid JSON: {e}")
+            has_warnings = True
+    else:
+        print(f"[i] Client credentials: credentials.json not found in {config.config_dir} (optional for Gmail sync)")
+
+    # Check stored OAuth token and scopes
+    if gmail_ok:
+        try:
+            from Mailroom.gmail import _read_last_email, _load_credentials, GMAIL_MODIFY_SCOPE
+            stored_email = _read_last_email(config)
+            if stored_email:
+                creds_dict = _load_credentials(stored_email)
+                if creds_dict:
+                    scopes = creds_dict.get("scopes") or []
+                    if isinstance(scopes, str):
+                        scopes = scopes.split()
+                    if GMAIL_MODIFY_SCOPE in scopes:
+                        print(f"[✓] Stored Gmail credentials: authorized with gmail.modify scope ({stored_email})")
+                    else:
+                        print("[!] Stored Gmail credentials lack gmail.modify scope. Run: python -m Mailroom auth --reauth")
+                        has_warnings = True
+                else:
+                    print(f"[i] Stored Gmail credentials: no token found in keyring for {stored_email}")
+            else:
+                print("[i] Stored Gmail credentials: none stored (optional, run 'python -m Mailroom auth' to connect)")
+        except Exception as e:
+            print(f"[!] Stored Gmail credentials: error inspecting credentials: {e}")
             has_warnings = True
 
     # 3. Configuration
@@ -603,17 +665,14 @@ def doctor_cmd(args, config) -> int:
 
             if detected_prov == PROVIDER_OLLAMA:
                 available = probe.get("available_models", [])
-                model_matched = any(
-                    m == model_id or m.startswith(f"{model_id}:") or model_id.startswith(f"{m}:")
-                    for m in available
-                )
+                model_matched = _is_model_installed(model_id, available)
                 if model_matched:
                     print(f"[✓] Model presence: '{model_id}' found in Ollama local library")
                 else:
                     print(f"[!] Model presence: '{model_id}' not found in Ollama local models.")
+                    print(f"    [!] Model '{model_id}' is not installed locally. Run: ollama pull {model_id}")
                     if available:
                         print(f"    Available models in Ollama: {', '.join(available)}")
-                    print(f"    Run 'ollama pull {model_id}' to download the model.")
                     has_warnings = True
             else:
                 if active_model == "unknown":
@@ -640,6 +699,222 @@ def doctor_cmd(args, config) -> int:
     else:
         print("Status: All checks passed. System is ready.")
         return 0
+
+
+def setup_cmd(args, config=None) -> int:
+    """Interactive onboarding wizard for first-time Mailroom setup."""
+    from pathlib import Path
+    from Mailroom.config import (
+        Config,
+        default_app_dir,
+        single_label_taxonomy,
+        is_loopback_url,
+    )
+    from Mailroom.classification import probe_model_endpoint, PROVIDER_OLLAMA
+
+    # Guard: Exit cleanly with instructions if stdin is not a TTY or --non-interactive is given
+    if getattr(args, "non_interactive", False) or not sys.stdin.isatty():
+        print("Mailroom setup wizard requires an interactive terminal (TTY).")
+        print("For non-interactive setup, run:")
+        print("  1. python -m Mailroom create-config [--profile standard|lightweight] [--taxonomy standard|single-label]")
+        print("  2. python -m Mailroom init-db")
+        print("  3. python -m Mailroom doctor")
+        return 0
+
+    print("=" * 60)
+    print("Welcome to Mailroom Setup Wizard")
+    print("=" * 60)
+    print("This wizard will guide you through setting up Mailroom for local-first")
+    print("mail classification, human review, and optional Gmail sync.\n")
+
+    if getattr(args, "config", None):
+        target_path = Path(args.config).resolve()
+    elif config is not None:
+        target_path = Path(config.config_path).resolve()
+    else:
+        target_path = default_app_dir() / "config.json"
+
+    # Step 1: Configuration
+    print("Step 1: Configuration")
+    print("---------------------")
+    create_or_overwrite = True
+    profile = "standard"
+    taxonomy = "standard"
+    target_label = "Rechnungen"
+
+    if target_path.exists():
+        print(f"Configuration file already exists at {target_path}.")
+        try:
+            choice = input("Do you want to reconfigure and overwrite it? [y/N]: ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            print("\nSetup cancelled.")
+            return 130
+        if choice not in ("y", "yes"):
+            create_or_overwrite = False
+            print("Keeping existing configuration.\n")
+            try:
+                config = Config(str(target_path))
+            except Exception as e:
+                print(f"Error loading existing configuration: {e}", file=sys.stderr)
+                return 1
+
+    if create_or_overwrite:
+        print("Select hardware profile for local inference:")
+        print("  [1] standard     - Ollama qwen2.5:7b (recommended for >= 16GB RAM / 8GB VRAM) [default]")
+        print("  [2] lightweight  - Ollama qwen2.5:3b (recommended for 8GB RAM / low VRAM)")
+        try:
+            prof_input = input("Enter choice [1/2, default: 1]: ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            print("\nSetup cancelled.")
+            return 130
+
+        if prof_input in ("2", "lightweight", "3b"):
+            profile = "lightweight"
+        else:
+            profile = "standard"
+
+        print("\nSelect label taxonomy archetype:")
+        print("  [1] standard     - 14-label multi-axis taxonomy across Type, Purchase, Retention [default]")
+        print("  [2] single-label - Focused single-target classification (e.g., invoices/receipts)")
+        try:
+            tax_input = input("Enter choice [1/2, default: 1]: ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            print("\nSetup cancelled.")
+            return 130
+
+        labels = None
+        scan_query = None
+        if tax_input in ("2", "single-label", "single"):
+            taxonomy = "single-label"
+            try:
+                lbl_input = input("Enter target label name [default: Rechnungen]: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\nSetup cancelled.")
+                return 130
+            if lbl_input:
+                target_label = lbl_input
+            labels = single_label_taxonomy(target_label)
+            scan_query = Config.DOCUMENTS_ATTACHMENT_QUERY
+        else:
+            taxonomy = "standard"
+
+        try:
+            if target_path.exists():
+                target_path.unlink()
+            config = Config(str(target_path), profile=profile, labels=labels, scan_query=scan_query)
+            print(f"[✓] Configuration created at {target_path} (profile: {profile}, taxonomy: {taxonomy})\n")
+        except Exception as e:
+            print(f"Error creating configuration: {e}", file=sys.stderr)
+            return 1
+
+    # Step 2: Database Initialization
+    print("Step 2: Database")
+    print("----------------")
+    db_path = Path(config.database_path)
+    if db_path.exists():
+        print(f"[✓] Database already exists at {db_path}.\n")
+    else:
+        print(f"Initializing database at {db_path}...")
+        try:
+            from Mailroom.db import DB
+            db_obj = DB(config.database_path)
+            db_obj.close()
+            print(f"[✓] Database initialized successfully at {db_path}.\n")
+        except Exception as e:
+            print(f"[!] Error initializing database: {e}\n", file=sys.stderr)
+
+    # Step 3: Backend Diagnostic
+    print("Step 3: Backend Diagnostic")
+    print("--------------------------")
+    endpoint = config.model_endpoint
+    model_id = config.model_id
+    prov = config.model_provider or "auto"
+    print(f"Checking backend connectivity at {endpoint}...")
+
+    if not is_loopback_url(endpoint):
+        print(f"[!] Warning: Configured model endpoint '{endpoint}' is not a loopback URL!\n")
+    else:
+        try:
+            probe = probe_model_endpoint(endpoint, timeout=5.0, provider=prov)
+            detected_prov = probe.get("provider", "unknown")
+            if detected_prov == PROVIDER_OLLAMA:
+                available = probe.get("available_models", [])
+                model_matched = _is_model_installed(model_id, available)
+                if model_matched:
+                    print(f"[✓] Backend reachable and model '{model_id}' is installed locally in Ollama.\n")
+                else:
+                    print(f"[!] Model '{model_id}' is not installed locally.")
+                    if available:
+                        print(f"    Available models in Ollama: {', '.join(available)}")
+                    print(f"    Run: ollama pull {model_id}\n")
+            else:
+                print(f"[✓] Backend reachable ({detected_prov}, active model: {probe.get('model_id')}).\n")
+        except Exception as e:
+            print(f"[!] Backend connectivity: unable to connect to {endpoint}")
+            print(f"    Details: {e}")
+            if prov == "ollama" or "11434" in endpoint:
+                print("    -> Make sure Ollama is running: 'ollama serve'")
+                print(f"    -> Run 'ollama pull {model_id}' to download the model.\n")
+            elif prov == "tabby" or "8080" in endpoint:
+                print("    -> Make sure TabbyAPI is running on port 8080\n")
+
+    # Step 4: Gmail (Optional)
+    print("Step 4: Gmail Integration (Optional)")
+    print("------------------------------------")
+    from Mailroom.gmail import check_gmail_dependencies
+    gmail_ok, missing_deps = check_gmail_dependencies()
+    if not gmail_ok:
+        missing_str = ", ".join(missing_deps)
+        print(f"[i] Gmail dependencies not installed (optional, missing: {missing_str}).")
+        print("    Core local mail classification works offline.")
+        print("    To enable Gmail sync, install: pip install 'mailroom[gmail]'\n")
+    else:
+        from Mailroom.gmail import _read_last_email, _load_credentials
+        stored_email = _read_last_email(config)
+        stored_creds = _load_credentials(stored_email) if stored_email else None
+        if stored_creds:
+            print(f"[✓] Gmail already authenticated as: {stored_email}\n")
+        else:
+            cred_file = config.config_dir / "credentials.json"
+            if cred_file.exists():
+                print(f"Found OAuth client credentials at {cred_file}.")
+                try:
+                    auth_choice = input("Would you like to authenticate with Gmail now? [y/N]: ").strip().lower()
+                except (KeyboardInterrupt, EOFError):
+                    print("\nSetup cancelled.")
+                    return 130
+                if auth_choice in ("y", "yes"):
+                    try:
+                        from Mailroom.gmail import authenticate
+                        authenticate(config)
+                        print("[✓] Gmail authentication completed successfully.\n")
+                    except Exception as e:
+                        print(f"[!] Gmail authentication failed: {e}\n", file=sys.stderr)
+                else:
+                    print("Skipping Gmail authentication for now.\n")
+            else:
+                print("[i] Gmail sync is optional. No credentials.json found.")
+                print(f"    To set up Gmail later, place your OAuth client JSON at: {cred_file}")
+                print("    and run: python -m Mailroom auth\n")
+
+    # Step 5: Completion
+    print("Step 5: Completion")
+    print("------------------")
+    print("=" * 60)
+    print("Mailroom Setup Complete!")
+    print("=" * 60)
+    print(f"Configuration: {config.config_path}")
+    print(f"Database:      {config.database_path}")
+    print(f"Backend:       {config.model_endpoint} ({config.model_id})")
+    print("\nNext steps (local-first workflow):")
+    print("  1. Ingest email:      python -m Mailroom ingest Mailroom/fixtures")
+    print("  2. Classify messages: python -m Mailroom classify --limit 10")
+    print("  3. Review in UI:      python -m Mailroom review")
+    print("  4. Export choices:    python -m Mailroom export --format csv")
+    print("\nOptional Gmail sync:")
+    print("  - Scan inbox:         python -m Mailroom scan")
+    print("  - Apply labels:       python -m Mailroom apply-labels --apply\n")
+    return 0
 
 
 def create_config_cmd(args):
@@ -1837,9 +2112,11 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    # Handle create-config separately before validation
+    # Handle create-config and setup separately before validation
     if args.command == "create-config":
         sys.exit(create_config_cmd(args))
+    if args.command == "setup":
+        sys.exit(setup_cmd(args))
 
     # Load configuration
     from Mailroom.config import Config, ConfigError

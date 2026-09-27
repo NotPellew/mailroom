@@ -22,18 +22,22 @@ start the app or `ollama serve`, then pull the default model:
 ollama pull qwen2.5:7b
 ```
 
-Then install Mailroom and create a config. Using a virtual environment avoids
-the externally-managed-environment error on recent Debian/Homebrew Python. With
-no flags, `create-config` uses the Ollama `standard` profile (`qwen2.5:7b` on
-`http://127.0.0.1:11434`); the `mailroom` console script and `python -m Mailroom`
-are equivalent:
+Then install Mailroom. For first-time onboarding, the interactive `setup` wizard
+guides you through hardware profile selection, taxonomy archetype, database
+initialization, backend diagnostics, and optional Gmail checks:
 
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python -m pip install -e .
+python -m Mailroom setup         # guided interactive onboarding
+```
+
+Alternatively, you can run the setup steps individually:
+
+```bash
 python -m Mailroom create-config   # no flags = Ollama standard profile
-python -m Mailroom doctor          # checks Python, config, database, and the Ollama endpoint
+python -m Mailroom doctor          # checks Python, config, database, model presence, and scopes
 python -m Mailroom init-db
 ```
 
@@ -212,8 +216,9 @@ Copy `config.example.json` or edit the config in the data directory
 | `fix-schema` | Verify/update database schema |
 | `reset-db` | Reset database (delete all data) |
 | `clear-cache` | Clear cached message text and proposals (keeps decisions) |
+| `setup` | Interactive onboarding wizard: hardware profile, taxonomy archetype, database init, and diagnostics |
 | `create-config` | Create initial configuration file (no flags = Ollama `standard`; `--profile tabby` uses TabbyAPI) |
-| `doctor` | Check environment health: Python, config, database schema, loopback safety, and local backend availability (Ollama/TabbyAPI). `--strict` makes warnings fail |
+| `doctor` | Check environment health: Python, config, database schema, loopback safety, Ollama model presence, and OAuth scopes. `--strict` makes warnings fail |
 
 ## Standalone classification (no Gmail, no database)
 
