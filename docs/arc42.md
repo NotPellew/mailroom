@@ -56,6 +56,7 @@ flowchart LR
 - **Structured outputs:** Structured JSON schemas (Ollama `format: PROPOSAL_JSON_SCHEMA` and JSON mode fallback) enforce deterministic outputs with label IDs, reasons, and abstain flags.
 - **Bounded data retention:** 7-day auto-expiry for cached email bodies in SQLite; exports exclude email bodies and reasons.
 - **Additive database migrations:** Lightweight SQLite schema upgrades without third-party migration frameworks.
+- **Taxonomy archetypes & custom templates:** Rather than proliferating rigid presets, Mailroom provides two core archetypes (`standard` multi-axis and `single-label` binary) alongside custom local JSON template support. Single-label configurations simplify prompt structure for lightweight models (`qwen2.5:3b`, 1.5B models) and single-purpose workflows (e.g. BelegDoc receipt processing), drastically reducing false abstentions. Remote template URLs are strictly rejected to maintain local-first network isolation.
 
 ## 5. Building block view
 
@@ -111,6 +112,7 @@ These are module boundaries within a single Python package, not distributed micr
 - **Idempotency & Decision Preservation:** Scanning is idempotent on `(account_id, gmail_message_id)`; local `.eml` ingest is idempotent on a namespaced id `{account_id}:local:{message_id}`, so an untrusted `Message-ID` header cannot collide with or impersonate a Gmail row. Human decisions are preserved across repeated scans and re-classifications. When a newer proposal exists after a decision was recorded, the review UI flags it for user attention rather than silently overwriting human intent.
 - **Decoupled Packaging & Graceful Degradation:** Core package requires only `flask` and `requests`. Heavy Google dependencies are optional under `[gmail]`. Diagnostic commands (`doctor`) and helpful CLI messages guide the user if optional dependencies are missing.
 - **Browser-Level Inertness Verification:** A dev-only `browser` extra (Playwright with bundled headless Chromium, never imported by `Mailroom/` runtime code) drives the real review page against a live loopback Flask server to assert in a real DOM that injected payloads execute nothing, the page issues no external requests, Gmail links match the exact expected URL, and the loopback security headers are present. The `browser`-marked suite is opt-in (`pytest -m browser`), skips by default, and hard-fails when `MAILROOM_REQUIRE_BROWSER=1` and the browser is unavailable so CI cannot pass without executing it.
+- **Consolidated Label Validation (DRY & Local-first):** All taxonomy definitions share a single validation routine (`validate_label_definitions`) called by `Config.validate`, `Config.set_labels`, and `load_template_file`. Template loading strictly prohibits remote URLs, enforcing local-first privacy. Single-label prompts dynamically adapt to binary classification without contradictory orthogonal-axis rules, while multi-label prompts without retention labels omit mandatory retention constraints.
 
 ## 9. Architecture decisions
 
@@ -129,6 +131,7 @@ These are module boundaries within a single Python package, not distributed micr
 | GitHub issues and PRs as source of truth | Feature specifications and implementation verification evidence live in version control. | Project hosting migration away from GitHub. |
 | Protected test discipline | Prevents silent degradation or deletion of verification tests during agent sessions. | Formal consensus to refactor protected test harnesses. |
 | Opt-in Playwright browser test extra | Verifies real-DOM inertness and rendered links without adding a runtime dependency, a build step, or a service; `pip install -e '.[dev]'` stays lightweight and the extra is never imported by runtime code. | Replacing Playwright or the bundled Chromium with another engine. |
+| Taxonomy archetypes and local template extension | Built-in `standard` and `single-label` archetypes plus local JSON templates avoid hardcoding domain-specific presets while drastically improving small model inference accuracy for focused tasks (e.g. invoice routing to BelegDoc). Remote URLs are rejected to protect privacy. | User demand for online template registries or multi-label archetype bundles. |
 
 ## 10. Quality requirements
 
