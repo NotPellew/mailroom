@@ -7,7 +7,7 @@ import tempfile
 import urllib.parse
 import ipaddress
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 
 class ConfigError(Exception):
@@ -109,6 +109,114 @@ HARDWARE_PROFILES: Dict[str, Dict[str, Any]] = {
         "id": "qwen2.5:3b",
     },
 }
+
+
+def validate_label_definitions(labels: Any) -> None:
+    """Validate label definitions structure, required fields, and uniqueness."""
+    if not isinstance(labels, list):
+        raise ConfigError("labels must be a list")
+    if not labels:
+        raise ConfigError("labels must contain at least one label")
+
+    label_ids = set()
+    label_names = set()
+
+    for label in labels:
+        if not isinstance(label, dict):
+            raise ConfigError("Each label must be an object")
+
+        # Validate label structure
+        required_fields = ["id", "name", "description"]
+        for field in required_fields:
+            if field not in label or not label[field]:
+                raise ConfigError(f"Label missing required field: {field}")
+            if not isinstance(label[field], str):
+                raise ConfigError(f"Label field '{field}' must be a string")
+
+        # Check for duplicate IDs
+        if label["id"] in label_ids:
+            raise ConfigError(f"Duplicate label ID: {label['id']}")
+        label_ids.add(label["id"])
+
+        # Check for duplicate names
+        if label["name"] in label_names:
+            raise ConfigError(f"Duplicate label name: {label['name']}")
+        label_names.add(label["name"])
+
+        if "exclusions" not in label:
+            raise ConfigError(f"Label '{label['id']}' is missing 'exclusions' field")
+        if not isinstance(label["exclusions"], list):
+            raise ConfigError(f"Label '{label['id']}' exclusions must be a list")
+        if "examples" in label and not isinstance(label["examples"], list):
+            raise ConfigError(f"Label '{label['id']}' examples must be a list")
+
+
+def single_label_taxonomy(target_label: Optional[str] = "Rechnungen") -> List[Dict[str, Any]]:
+    """Return single-target archetype taxonomy definition."""
+    raw = "Rechnungen" if target_label is None else target_label
+    name = raw.strip()
+    if not name:
+        raise ConfigError("Target label cannot be empty")
+    return [
+        {
+            "id": name,
+            "name": name,
+            "axis": "kind",
+            "description": (
+                "Invoice, receipt, billing notice, or proof of payment "
+                "(Rechnung, Beleg, Quittung). If not an invoice or receipt, "
+                "abstain or do not select."
+            ),
+            "examples": [
+                "Rechnung",
+                "Invoice",
+                "Ihre Quittung",
+                "Kassenbeleg",
+                "Payment receipt",
+                "Zahlungsbestätigung",
+            ],
+            "exclusions": [
+                "Newsletter or promotional deal",
+                "Shipping update without payment details",
+                "Verification code or OTP",
+                "Security alert",
+                "Personal conversation",
+            ],
+        }
+    ]
+
+
+def load_template_file(template_path: Union[str, Path]) -> List[Dict[str, Any]]:
+    """Load and validate label definitions from a local JSON template file.
+
+    Rejects remote URLs to enforce local-first isolation. Accepts either a JSON
+    array of label objects or an object with a 'labels' array.
+    """
+    raw_str = str(template_path).strip()
+    if "://" in raw_str or raw_str.lower().startswith(("http:", "https:", "ftp:")):
+        raise ConfigError("Remote template URLs are not supported (local files only)")
+
+    path = Path(raw_str).expanduser()
+    if not path.exists() or not path.is_file():
+        raise ConfigError(f"Template file does not exist: {path}")
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise ConfigError(f"Template file contains invalid JSON: {e}") from e
+
+    if isinstance(data, list):
+        labels = data
+    elif isinstance(data, dict) and "labels" in data:
+        labels = data["labels"]
+    else:
+        raise ConfigError(
+            "Template file must contain a JSON array of labels or an object with a 'labels' array"
+        )
+
+    validate_label_definitions(labels)
+    return labels
 
 
 class Config:
@@ -320,22 +428,31 @@ class Config:
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
         # Load or create config
-        self._load_config(profile=profile)
-        if labels is not None:
-            self._config["labels"] = labels
-            self.validate()
+        self._load_config(profile=profile, labels=labels)
 
-    def _load_config(self, profile: Optional[str] = None):
+    def _load_config(
+        self,
+        profile: Optional[str] = None,
+        labels: Optional[List[Dict[str, Any]]] = None,
+    ):
         """Load configuration from file or use defaults."""
         if self.config_path.exists():
             with open(self.config_path, "r", encoding="utf-8") as f:
                 self._config = json.load(f)
+            if labels is not None:
+                self._config["labels"] = labels
+                self.validate()
         else:
-            self._config = self._default_config(profile=profile)
+            self._config = self._default_config(profile=profile, labels=labels)
+            self.validate()
             # Save the default configuration
             self.save()
 
-    def _default_config(self, profile: Optional[str] = None) -> Dict[str, Any]:
+    def _default_config(
+        self,
+        profile: Optional[str] = None,
+        labels: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         """Return default configuration."""
         selected_profile = self.HARDWARE_PROFILES.get(
             profile or "standard", self.HARDWARE_PROFILES["standard"]
@@ -348,7 +465,7 @@ class Config:
             },
             "timeout": 30.0,  # seconds
             "sample_limit": 100,  # messages to process
-            "labels": self.DEFAULT_LABELS,
+            "labels": labels if labels is not None else self.DEFAULT_LABELS,
             "debug": False,
         }
 
@@ -453,43 +570,7 @@ class Config:
             raise ConfigError("timeout must be a positive number")
 
         # Validate the same label list that Config.labels returns
-        label_ids = set()
-        label_names = set()
-
-        labels = self.labels
-        if not isinstance(labels, list):
-            raise ConfigError("labels must be a list")
-        if not labels:
-            raise ConfigError("labels must contain at least one label")
-
-        for label in labels:
-            if not isinstance(label, dict):
-                raise ConfigError("Each label must be an object")
-
-            # Validate label structure
-            required_fields = ["id", "name", "description"]
-            for field in required_fields:
-                if field not in label or not label[field]:
-                    raise ConfigError(f"Label missing required field: {field}")
-                if not isinstance(label[field], str):
-                    raise ConfigError(f"Label field '{field}' must be a string")
-
-            # Check for duplicate IDs
-            if label["id"] in label_ids:
-                raise ConfigError(f"Duplicate label ID: {label['id']}")
-            label_ids.add(label["id"])
-
-            # Check for duplicate names
-            if label["name"] in label_names:
-                raise ConfigError(f"Duplicate label name: {label['name']}")
-            label_names.add(label["name"])
-
-            if "exclusions" not in label:
-                raise ConfigError(f"Label '{label['id']}' is missing 'exclusions' field")
-            if not isinstance(label["exclusions"], list):
-                raise ConfigError(f"Label '{label['id']}' exclusions must be a list")
-            if "examples" in label and not isinstance(label["examples"], list):
-                raise ConfigError(f"Label '{label['id']}' examples must be a list")
+        validate_label_definitions(self.labels)
 
         # Check debug mode
         debug = self._config.get("debug", False)

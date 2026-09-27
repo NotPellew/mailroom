@@ -80,6 +80,51 @@ recreate the config to change profiles.
 Ollama profiles need Ollama installed and running; see the
 [Ollama Quickstart](https://docs.ollama.com/quickstart).
 
+### Taxonomy archetypes and custom templates
+
+`create-config` supports two built-in taxonomy archetypes, plus arbitrary custom
+taxonomies via local JSON template files:
+
+- **Standard archetype (`--taxonomy standard`, default):** Defines the full multi-axis
+  taxonomy across kind (`Type/*`), purchase (`Purchase/*`), and retention (`Retention/*`).
+  Best for comprehensive mailbox categorization.
+- **Single-target archetype (`--taxonomy single-label`):** Configures a focused binary
+  classification target (default: `Rechnungen`), tailored for lightweight local models
+  (`qwen2.5:3b`, 1.5B models) and single-purpose workflows (such as downstream document
+  processing or BelegDoc integration). Lightweight models classify binary targets faster
+  and with near-zero false abstentions.
+
+```bash
+# Focused single-target invoice/receipt setup with default label (Rechnungen):
+python -m Mailroom create-config --taxonomy single-label
+
+# Single-target with a custom label ID and name (e.g. Invoices or Belege):
+python -m Mailroom create-config --taxonomy single-label --target-label Invoices
+```
+
+- **Custom templates (`--template <path>`):** Load label definitions from a local JSON file.
+  Remote URLs (`http://`, `https://`) are strictly rejected to maintain local-first isolation.
+  Accepts either a JSON array of label objects or an object with a `"labels"` array:
+
+```bash
+python -m Mailroom create-config --template ./custom-labels.json
+```
+
+Template schema example:
+```json
+[
+  {
+    "id": "Doc/Contract",
+    "name": "Contract",
+    "axis": "document",
+    "description": "Signed legal agreements and terms.",
+    "examples": ["NDA", "Employment agreement", "Terms update"],
+    "exclusions": ["Receipt", "Invoice", "Promotional mail"]
+  }
+]
+```
+
+
 ## Optional: Gmail synchronization
 
 To mirror reviewed labels into Gmail (or pull label edits made in Gmail back

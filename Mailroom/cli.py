@@ -118,10 +118,33 @@ Optional Gmail sync (needs OAuth credentials and the [gmail] extra):
     # create-config
     create_config_parser = subparsers.add_parser("create-config", help="Create initial configuration file")
     create_config_parser.add_argument(
+        "--config",
+        default=argparse.SUPPRESS,
+        help="Path to configuration file (default: per-user Mailroom dir)",
+    )
+    create_config_parser.add_argument(
         "--profile",
         choices=["tabby", "standard", "lightweight"],
         default="standard",
         help="Hardware profile (standard for Ollama, lightweight for smaller Ollama models, tabby for TabbyAPI)",
+    )
+    create_config_parser.add_argument(
+        "--taxonomy",
+        choices=["standard", "single-label"],
+        default="standard",
+        help="Taxonomy archetype: 'standard' (14-label multi-axis) or 'single-label' (focused single target)",
+    )
+    create_config_parser.add_argument(
+        "--target-label",
+        type=str,
+        default=None,
+        help="Custom label ID and display name when using --taxonomy single-label (default: Rechnungen)",
+    )
+    create_config_parser.add_argument(
+        "--template",
+        type=str,
+        default=None,
+        help="Path to a local JSON file containing custom label definitions",
     )
 
     # auth
@@ -620,7 +643,53 @@ def create_config_cmd(args):
     Args:
         args: Parsed arguments
     """
-    from Mailroom.config import Config, default_app_dir
+    from Mailroom.config import (
+        Config,
+        ConfigError,
+        default_app_dir,
+        single_label_taxonomy,
+        load_template_file,
+    )
+
+    template = getattr(args, "template", None)
+    taxonomy = getattr(args, "taxonomy", "standard")
+    target_label = getattr(args, "target_label", None)
+
+    # Validate flag combinations and constraints before touching filesystem
+    if template:
+        if taxonomy == "single-label":
+            print(
+                "Error: --template cannot be combined with --taxonomy single-label (mutually exclusive)",
+                file=sys.stderr,
+            )
+            return 1
+        if target_label is not None:
+            print(
+                "Error: --template cannot be combined with --target-label (mutually exclusive)",
+                file=sys.stderr,
+            )
+            return 1
+    elif target_label is not None and taxonomy != "single-label":
+        print(
+            "Error: --target-label requires --taxonomy single-label",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Resolve label definitions
+    labels = None
+    if template:
+        try:
+            labels = load_template_file(template)
+        except ConfigError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+    elif taxonomy == "single-label":
+        try:
+            labels = single_label_taxonomy(target_label)
+        except ConfigError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
     if args.config:
         target_path = Path(args.config).resolve()
@@ -632,10 +701,13 @@ def create_config_cmd(args):
         print("Edit it to customize settings.")
         return 0
 
-    target_path.parent.mkdir(parents=True, exist_ok=True)
     profile = getattr(args, "profile", "standard")
-    cfg = Config(str(target_path), profile=profile)
-    cfg.save()
+    try:
+        Config(str(target_path), profile=profile, labels=labels)
+    except ConfigError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
     print(f"Configuration created: {target_path} (profile: {profile})")
     profile_info = Config.HARDWARE_PROFILES.get(profile, Config.HARDWARE_PROFILES["standard"])
     print(
