@@ -172,6 +172,9 @@
             padding: 1rem;
             box-sizing: border-box;
         }
+        .modal-overlay[hidden] {
+            display: none !important;
+        }
         .modal-content {
             background: white;
             border-radius: 8px;
@@ -288,7 +291,7 @@
         <a href="/api/status" target="_blank" rel="noopener noreferrer">Status</a>
         <button id="import-toggle" class="nav-toggle" type="button">Import mail</button>
         <button id="labels-toggle" class="nav-toggle" type="button">Manage labels</button>
-        <a href="#export-card" class="nav-toggle" style="text-decoration:none;">Export</a>
+        <button id="export-toggle" class="nav-toggle" type="button">Export</button>
         <span class="counts" id="nav-counts"></span>
     </nav>
 
@@ -303,7 +306,7 @@
                         Mailroom keeps your emails 100% private by analyzing them directly on your computer using Ollama.
                     </p>
                     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-                        <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer" class="btn">Download Ollama (Free)</a>
+                        <button type="button" class="btn" id="ai-download-ollama-btn">Download Ollama (Free)</button>
                         <button type="button" id="ai-check-btn" class="secondary">Check Again</button>
                     </div>
                 </div>
@@ -2008,16 +2011,17 @@
                                 aiAdvice.style.color = "#842029";
                             }
                             if (aiAction) {
-                                const link = el("a", {
-                                    href: "https://ollama.com/download",
-                                    target: "_blank",
-                                    rel: "noopener noreferrer",
+                                const btn = el("button", {
+                                    type: "button",
                                     class: "btn",
                                     text: "Download Ollama (Free)"
                                 });
-                                link.style.fontSize = "0.8rem";
-                                link.style.padding = "0.3rem 0.6rem";
-                                aiAction.appendChild(link);
+                                btn.style.fontSize = "0.8rem";
+                                btn.style.padding = "0.3rem 0.6rem";
+                                btn.addEventListener("click", function () {
+                                    window.open("https://ollama.com/download", "_blank", "noopener,noreferrer");
+                                });
+                                aiAction.appendChild(btn);
                             }
                         }
                     }
@@ -2162,6 +2166,19 @@
                 if (aiDownloadBtn) { aiDownloadBtn.addEventListener("click", startModelDownload); }
                 const aiRetryBtn = document.getElementById("ai-retry-btn");
                 if (aiRetryBtn) { aiRetryBtn.addEventListener("click", startModelDownload); }
+                const aiDlOllamaBtn = document.getElementById("ai-download-ollama-btn");
+                if (aiDlOllamaBtn) {
+                    aiDlOllamaBtn.addEventListener("click", function () {
+                        window.open("https://ollama.com/download", "_blank", "noopener,noreferrer");
+                    });
+                }
+                const exportToggle = document.getElementById("export-toggle");
+                if (exportToggle) {
+                    exportToggle.addEventListener("click", function () {
+                        const card = document.getElementById("export-card");
+                        if (card) { card.scrollIntoView({ behavior: "smooth" }); }
+                    });
+                }
 
                 // System Health Modal
                 const healthToggle = document.getElementById("health-modal-toggle");
