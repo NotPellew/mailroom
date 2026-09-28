@@ -44,9 +44,10 @@ class EmailClassifier:
         subject: str = "",
         sender: str = "",
         sender_email: str = "",
+        filename: Optional[str] = None,
         body: Optional[str] = None,
     ) -> Proposal:
-        """Return a Proposal for a pre-built mail block or raw subject/body fields."""
+        """Return a Proposal for a pre-built mail block or raw subject/body/metadata fields."""
         defs = self.config.labels if labels is None else labels
         if (
             not isinstance(defs, list)
@@ -59,14 +60,26 @@ class EmailClassifier:
         label_ids = [str(item["id"]) for item in defs]
 
         if email_text is None:
-            if body is None:
-                raise ClassificationError("classify requires email_text or body")
+            has_content = any(
+                bool(val and str(val).strip())
+                for val in (body, subject, sender, sender_email, filename)
+            )
+            if not has_content:
+                raise ClassificationError(
+                    "classify requires at least one of subject, sender, filename, body, or email_text"
+                )
             email_text = classification.build_mail_block(
                 sender=sender,
                 sender_email=sender_email,
                 subject=subject,
-                body=body,
+                body=body or "",
+                filename=filename or "",
             )
+        else:
+            if not email_text.strip():
+                raise ClassificationError(
+                    "classify requires at least one of subject, sender, filename, body, or email_text"
+                )
 
         return classification.classify_message(
             email_text=email_text,
