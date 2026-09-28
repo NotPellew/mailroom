@@ -197,8 +197,30 @@
             </div>
         </div>
 
+        <div id="classify-progress-panel" class="container" hidden style="margin-bottom: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                <span id="classify-progress-label" style="font-size: 0.9rem; font-weight: 600;">Classifying...</span>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button type="button" id="classify-pause-btn" class="secondary">Pause</button>
+                    <button type="button" id="classify-cancel-btn" class="danger">Cancel</button>
+                </div>
+            </div>
+            <div style="background: #e9ecef; border-radius: 4px; height: 12px; overflow: hidden;">
+                <div id="classify-progress-bar" style="background: #0f3460; height: 100%; width: 0%; transition: width 0.2s;"></div>
+            </div>
+        </div>
+
         <div class="container">
             <div class="toolbar">
+                <div class="field" style="display: flex; flex-direction: row; gap: 0.35rem; align-items: flex-end;">
+                    <button type="button" id="classify-btn" disabled>Classify Pending (0)</button>
+                    <select id="classify-limit" title="Batch limit" style="padding: 0.45rem 0.5rem;">
+                        <option value="1000" selected>All</option>
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
                 <div class="field">
                     <label for="filter-status">Review status</label>
                     <select id="filter-status">
@@ -368,6 +390,15 @@
                     document.getElementById("status-decisions").textContent = data.reviewed || 0;
                     document.getElementById("nav-counts").textContent =
                         (data.messages || 0) + " messages · " + (data.proposals_pending || 0) + " awaiting review";
+
+                    const unclassified = data.unclassified || 0;
+                    const classifyBtn = document.getElementById("classify-btn");
+                    if (classifyBtn) {
+                        classifyBtn.textContent = "Classify Pending (" + unclassified + ")";
+                        if (!state.classifying) {
+                            classifyBtn.disabled = (unclassified === 0);
+                        }
+                    }
 
                     if (data.messages === 0) {
                         const importPanel = document.getElementById("import-panel");
@@ -1018,8 +1049,156 @@
                 }
             }
 
+            async function startBatchClassification() {
+                if (state.classifying) { return; }
+                const limitSelect = document.getElementById("classify-limit");
+                const limit = limitSelect ? (parseInt(limitSelect.value, 10) || 1000) : 1000;
+
+                const classifyBtn = document.getElementById("classify-btn");
+                classifyBtn.disabled = true;
+
+                const progressPanel = document.getElementById("classify-progress-panel");
+                const progressLabel = document.getElementById("classify-progress-label");
+                const progressBar = document.getElementById("classify-progress-bar");
+                const pauseBtn = document.getElementById("classify-pause-btn");
+
+                progressPanel.hidden = false;
+                progressLabel.textContent = "Fetching pending messages...";
+                progressBar.style.width = "0%";
+                pauseBtn.textContent = "Pause";
+
+                state.classifying = true;
+                state.paused = false;
+                state.cancelled = false;
+                state.pausePromiseResolve = null;
+
+                let data;
+                try {
+                    data = await api("/api/classify/pending?limit=" + limit);
+                } catch (err) {
+                    progressLabel.textContent = "Failed to fetch pending list: " + err.message;
+                    state.classifying = false;
+                    classifyBtn.disabled = false;
+                    return;
+                }
+
+                const items = data.pending || [];
+                if (items.length === 0) {
+                    progressLabel.textContent = "No pending messages to classify.";
+                    state.classifying = false;
+                    classifyBtn.disabled = true;
+                    setTimeout(function () {
+                        if (!state.classifying) { progressPanel.hidden = true; }
+                    }, 2500);
+                    return;
+                }
+
+                let completed = 0;
+                let uncertain = 0;
+                let failed = 0;
+                let pausedMs = 0;
+                const startTime = Date.now();
+
+                for (let i = 0; i < items.length; i++) {
+                    if (state.cancelled) { break; }
+
+                    if (state.paused) {
+                        progressLabel.textContent = "Classification paused (" + completed + " of " + items.length + " done).";
+                        await Promise.all([loadStatus(), loadReview()]);
+                        const pauseStart = Date.now();
+                        await new Promise(function (resolve) { state.pausePromiseResolve = resolve; });
+                        pausedMs += (Date.now() - pauseStart);
+                        if (state.cancelled) { break; }
+                    }
+
+                    const item = items[i];
+                    const subjectDisplay = item.subject || "(no subject)";
+                    const pct = Math.round((i / items.length) * 100);
+                    progressBar.style.width = pct + "%";
+
+                    let etaStr = "";
+                    if (i > 0) {
+                        const elapsedSec = Math.max(0.1, (Date.now() - startTime - pausedMs) / 1000);
+                        const avgPerItem = elapsedSec / i;
+                        const remainingSec = Math.round((items.length - i) * avgPerItem);
+                        etaStr = " (~" + (remainingSec > 60 ? Math.round(remainingSec / 60) + "m" : remainingSec + "s") + " remaining)";
+                    }
+                    progressLabel.textContent = "Classifying " + (i + 1) + " of " + items.length + ": '" + subjectDisplay + "'" + etaStr;
+
+                    try {
+                        const res = await api("/api/classify", {
+                            method: "POST",
+                            body: { message_id: item.id },
+                        });
+                        completed++;
+                        if (res.abstain) { uncertain++; }
+                        // Stream proposal into review list in real time
+                        await Promise.all([loadStatus(), loadReview()]);
+                    } catch (err) {
+                        failed++;
+                        if (err.message.includes("500") || err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
+                            progressLabel.textContent = "Classification stopped: " + err.message;
+                            break;
+                        }
+                    }
+                }
+
+                const finalPct = items.length > 0 ? Math.round((completed / items.length) * 100) : 0;
+                progressBar.style.width = finalPct + "%";
+
+                let summary = "";
+                if (state.cancelled) {
+                    summary = "Cancelled after " + completed + " email(s). " + (completed - uncertain) + " suggested, " + uncertain + " uncertain.";
+                } else if (failed > 0) {
+                    summary = "Finished with errors. " + completed + " classified (" + uncertain + " uncertain), " + failed + " failed.";
+                } else {
+                    summary = "Classification complete! " + completed + " email(s) processed (" + (completed - uncertain) + " suggestions, " + uncertain + " uncertain).";
+                }
+                progressLabel.textContent = summary;
+
+                state.classifying = false;
+                state.paused = false;
+                state.cancelled = false;
+
+                if (completed > 0) {
+                    const filterState = document.getElementById("filter-state");
+                    if (filterState) { filterState.value = "scored"; }
+                }
+                await Promise.all([loadStatus(), loadReview()]);
+
+                if (completed > 0 && state.items && state.items.length > 0) {
+                    selectItem(state.items[0].message_id);
+                }
+
+                setTimeout(function () {
+                    if (!state.classifying) { progressPanel.hidden = true; }
+                }, 4000);
+            }
+
             function init() {
                 document.getElementById("refresh-btn").addEventListener("click", function () { loadReview(); loadStatus(); });
+                document.getElementById("classify-btn").addEventListener("click", startBatchClassification);
+                document.getElementById("classify-pause-btn").addEventListener("click", function () {
+                    const pauseBtn = document.getElementById("classify-pause-btn");
+                    if (!state.paused) {
+                        state.paused = true;
+                        pauseBtn.textContent = "Resume";
+                    } else {
+                        state.paused = false;
+                        pauseBtn.textContent = "Pause";
+                        if (state.pausePromiseResolve) {
+                            state.pausePromiseResolve();
+                            state.pausePromiseResolve = null;
+                        }
+                    }
+                });
+                document.getElementById("classify-cancel-btn").addEventListener("click", function () {
+                    state.cancelled = true;
+                    if (state.paused && state.pausePromiseResolve) {
+                        state.pausePromiseResolve();
+                        state.pausePromiseResolve = null;
+                    }
+                });
                 document.getElementById("filter-status").addEventListener("change", resetAndLoad);
                 document.getElementById("filter-state").addEventListener("change", resetAndLoad);
                 document.getElementById("filter-label").addEventListener("change", resetAndLoad);
