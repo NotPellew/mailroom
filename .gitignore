@@ -37,6 +37,8 @@ choices.csv
 apply-labels-plan.csv
 mailroom-export*.csv
 mailroom-export*.json
+mailroom-decisions*.csv
+mailroom-decisions*.json
 pilot-conflicts.json
 disagreements-*.md
 suggested-labels-*.json

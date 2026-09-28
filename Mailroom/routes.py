@@ -4,6 +4,7 @@ import io
 import logging
 import sqlite3
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from urllib.parse import quote
@@ -69,6 +70,8 @@ def get_status(db_path: str) -> Dict[str, Any]:
         "proposals_pending": 0,
         "decisions_pending": 0,
         "reviewed": 0,
+        "exportable": 0,
+        "skipped": 0,
         "unclassified": 0,
         "db_initialized": False,
     }
@@ -124,9 +127,19 @@ def get_status(db_path: str) -> Dict[str, Any]:
 
             # decisions that carry a final human choice
             cursor.execute(
-                "SELECT COUNT(*) as count FROM decisions WHERE status IN ('accepted', 'corrected', 'skipped')"
+                """
+                SELECT
+                    COUNT(*) as total_reviewed,
+                    COALESCE(SUM(CASE WHEN status IN ('accepted', 'corrected') THEN 1 ELSE 0 END), 0) as exportable_count,
+                    COALESCE(SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END), 0) as skipped_count
+                FROM decisions
+                WHERE status IN ('accepted', 'corrected', 'skipped')
+                """
             )
-            reviewed_count = cursor.fetchone()["count"]
+            decision_row = cursor.fetchone()
+            reviewed_count = (decision_row["total_reviewed"] if decision_row else 0) or 0
+            exportable_count = (decision_row["exportable_count"] if decision_row else 0) or 0
+            skipped_count = (decision_row["skipped_count"] if decision_row else 0) or 0
 
             # Messages that have body text and no proposal yet (unclassified)
             cursor.execute(
@@ -150,6 +163,8 @@ def get_status(db_path: str) -> Dict[str, Any]:
                 "proposals_pending": pending_count,
                 "decisions_pending": pending_decisions,
                 "reviewed": reviewed_count,
+                "exportable": exportable_count,
+                "skipped": skipped_count,
                 "unclassified": unclassified_count,
                 "db_initialized": True,
             }
@@ -1121,19 +1136,24 @@ def api_export():
         db_obj.close()
 
     records = export_module.build_export_records(decisions, _label_name_map(config))
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     if export_format == "json":
         body = export_module.records_to_json(records)
         return Response(
             body,
-            mimetype="application/json",
-            headers={"Content-Disposition": "attachment; filename=mailroom-export.json"},
+            mimetype="application/json; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="mailroom-decisions-{today_str}.json"'
+            },
         )
 
     body = export_module.records_to_csv(records)
     return Response(
         body,
-        mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=mailroom-export.csv"},
+        mimetype="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="mailroom-decisions-{today_str}.csv"'
+        },
     )
 

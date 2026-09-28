@@ -168,6 +168,7 @@
         <a href="/api/status" target="_blank" rel="noopener noreferrer">Status</a>
         <button id="import-toggle" class="nav-toggle" type="button">Import mail</button>
         <button id="labels-toggle" class="nav-toggle" type="button">Manage labels</button>
+        <a href="#export-card" class="nav-toggle" style="text-decoration:none;">Export</a>
         <span class="counts" id="nav-counts"></span>
     </nav>
 
@@ -253,15 +254,6 @@
                     </label>
                 </div>
                 <button id="refresh-btn" class="secondary">Refresh</button>
-
-                <div class="field" style="margin-left:auto;">
-                    <label>Export reviewed choices</label>
-                    <label class="label-choice">
-                        <input type="checkbox" id="export-skipped"> include skipped
-                    </label>
-                </div>
-                <button id="export-csv" class="secondary">Export CSV</button>
-                <button id="export-json" class="secondary">Export JSON</button>
             </div>
 
             <div id="conflicts-panel" class="status-card" hidden>
@@ -330,6 +322,26 @@
                 </div>
             </div>
         </div>
+
+        <div class="container" id="export-card" style="margin-top: 1.5rem;">
+            <div class="status-card" style="margin-bottom: 0;">
+                <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem;">Export Your Decisions</h3>
+                <p class="muted" style="margin-bottom: 1rem;">
+                    Download your reviewed choices as spreadsheet-ready CSV or structured JSON.
+                </p>
+                <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                    <span id="export-count-label" style="font-weight: 600;">0 reviewed emails ready to export.</span>
+                    <label class="label-choice">
+                        <input type="checkbox" id="export-skipped"> Include skipped emails
+                    </label>
+                </div>
+                <div class="actions" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                    <button type="button" id="export-csv-btn">Download CSV (Excel)</button>
+                    <button type="button" id="export-json-btn" class="secondary">Download JSON</button>
+                </div>
+                <div id="export-toast" class="toast" style="display: none; margin-top: 0.75rem;"></div>
+            </div>
+        </div>
     </main>
 
     <script>
@@ -337,7 +349,20 @@
             "use strict";
 
             const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute("content") || "";
-            const state = { items: [], labels: [], currentId: null, current: null, offset: 0, limit: 50, total: 0, editingLabelId: null };
+            const state = {
+                items: [],
+                labels: [],
+                currentId: null,
+                current: null,
+                offset: 0,
+                limit: 50,
+                total: 0,
+                editingLabelId: null,
+                exportable: 0,
+                skipped: 0,
+                reviewed: 0,
+                exportToastTimeout: null,
+            };
             const LABEL_AXES = ["kind", "purchase", "retention"];
             const LABEL_AXIS_ORDER = ["kind", "purchase", "retention", "Other"];
 
@@ -390,6 +415,11 @@
                     document.getElementById("status-decisions").textContent = data.reviewed || 0;
                     document.getElementById("nav-counts").textContent =
                         (data.messages || 0) + " messages · " + (data.proposals_pending || 0) + " awaiting review";
+
+                    state.exportable = data.exportable || 0;
+                    state.skipped = data.skipped || 0;
+                    state.reviewed = data.reviewed || 0;
+                    updateExportUI();
 
                     const unclassified = data.unclassified || 0;
                     const classifyBtn = document.getElementById("classify-btn");
@@ -946,13 +976,53 @@
                 }
             }
 
+            function updateExportUI() {
+                const includeSkipped = document.getElementById("export-skipped") && document.getElementById("export-skipped").checked;
+                const count = includeSkipped ? (state.reviewed || 0) : (state.exportable || 0);
+                const label = document.getElementById("export-count-label");
+                if (label) {
+                    label.textContent = count === 1 ? "1 reviewed email ready to export." : (count + " reviewed emails ready to export.");
+                }
+                const csvBtn = document.getElementById("export-csv-btn");
+                const jsonBtn = document.getElementById("export-json-btn");
+                if (csvBtn) { csvBtn.disabled = (count === 0); }
+                if (jsonBtn) { jsonBtn.disabled = (count === 0); }
+            }
+
             function exportUrl(format) {
-                const include = document.getElementById("export-skipped").checked ? "1" : "0";
+                const include = document.getElementById("export-skipped") && document.getElementById("export-skipped").checked ? "1" : "0";
                 return "/api/export?format=" + encodeURIComponent(format) + "&include_skipped=" + include;
             }
 
             function exportChoices(format) {
-                window.location.href = exportUrl(format);
+                const includeSkipped = document.getElementById("export-skipped") && document.getElementById("export-skipped").checked;
+                const count = includeSkipped ? (state.reviewed || 0) : (state.exportable || 0);
+                if (count === 0) {
+                    showExportToast("No reviewed decisions to export yet.", "err");
+                    return;
+                }
+                const url = exportUrl(format);
+                const a = document.createElement("a");
+                a.href = url;
+                a.style.display = "none";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+
+                const toastMsg = "Export downloaded: " + count + " " + (count === 1 ? "decision" : "decisions") + " saved to your Downloads folder.";
+                showExportToast(toastMsg, "ok");
+            }
+
+            function showExportToast(msg, kind) {
+                const toast = document.getElementById("export-toast");
+                if (!toast) { return; }
+                toast.textContent = msg;
+                toast.className = "toast " + (kind || "ok");
+                toast.style.display = "block";
+                clearTimeout(state.exportToastTimeout);
+                state.exportToastTimeout = setTimeout(function () {
+                    toast.style.display = "none";
+                }, 5000);
             }
 
             async function extractFilesFromDataTransfer(dataTransfer) {
@@ -1211,8 +1281,18 @@
                     state.offset += state.limit;
                     loadReview();
                 });
-                document.getElementById("export-csv").addEventListener("click", function () { exportChoices("csv"); });
-                document.getElementById("export-json").addEventListener("click", function () { exportChoices("json"); });
+                const exportSkipped = document.getElementById("export-skipped");
+                if (exportSkipped) {
+                    exportSkipped.addEventListener("change", updateExportUI);
+                }
+                const exportCsvBtn = document.getElementById("export-csv-btn");
+                if (exportCsvBtn) {
+                    exportCsvBtn.addEventListener("click", function () { exportChoices("csv"); });
+                }
+                const exportJsonBtn = document.getElementById("export-json-btn");
+                if (exportJsonBtn) {
+                    exportJsonBtn.addEventListener("click", function () { exportChoices("json"); });
+                }
                 document.getElementById("import-toggle").addEventListener("click", function () {
                     const panel = document.getElementById("import-panel");
                     panel.hidden = !panel.hidden;
