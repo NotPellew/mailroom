@@ -1,6 +1,9 @@
 """Flask routes for Mailroom review page."""
 
+import io
+import logging
 import sqlite3
+import zipfile
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from urllib.parse import quote
@@ -9,6 +12,8 @@ from flask import Blueprint, render_template, jsonify, current_app, request, Res
 
 from Mailroom import security
 from Mailroom.config import ConfigError, is_loopback_url
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("main", __name__)
 
@@ -263,6 +268,157 @@ def api_delete_label(label_id):
     except ConfigError as e:
         return jsonify({"error": str(e)}), 400
     return jsonify({"labels": config.labels})
+
+
+@bp.route("/api/ingest", methods=["POST"])
+def api_ingest():
+    """Ingest .eml files or .zip archives uploaded via drag-and-drop or file picker."""
+    config = _get_config()
+    from Mailroom.db import DB
+    from Mailroom.ingest import ingest_eml_bytes
+
+    files = request.files.getlist("files")
+    if not files and "file" in request.files:
+        files = [request.files["file"]]
+
+    if not files or all(not f.filename for f in files):
+        return jsonify({"error": "No files provided"}), 400
+
+    db_obj = DB(config.database_path)
+    try:
+        acc_id = db_obj.get_or_create_account(
+            email="local",
+            name="Local Mailbox",
+            is_local=True,
+        )
+
+        total_received = 0
+        ingested = 0
+        duplicates_or_existing = 0
+        failed = 0
+        message_ids: List[str] = []
+
+        MAX_EML_SIZE = 10 * 1024 * 1024  # 10 MB
+        MAX_ZIP_UNCOMPRESSED = 50 * 1024 * 1024  # 50 MB
+        MAX_ZIP_FILES = 500
+
+        for f in files:
+            filename = f.filename or ""
+            if not filename:
+                continue
+            lower_name = filename.lower()
+
+            if lower_name.endswith(".zip"):
+                try:
+                    zip_bytes = f.read()
+                    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+                        uncompressed_total = 0
+                        file_count = 0
+                        eml_entries = []
+                        for info in zf.infolist():
+                            if info.is_dir():
+                                continue
+                            fname = info.filename.lower()
+                            if (
+                                fname.startswith("__macosx")
+                                or "/__macosx" in fname
+                                or ".ds_store" in fname
+                            ):
+                                continue
+                            if fname.endswith(".zip"):
+                                return jsonify({"error": "Nested zip archives are not allowed"}), 400
+                            if fname.endswith(".eml"):
+                                file_count += 1
+                                if file_count > MAX_ZIP_FILES:
+                                    return (
+                                        jsonify(
+                                            {
+                                                "error": (
+                                                    f"Zip archive exceeds maximum limit of {MAX_ZIP_FILES} files"
+                                                )
+                                            }
+                                        ),
+                                        400,
+                                    )
+                                uncompressed_total += info.file_size
+                                if uncompressed_total > MAX_ZIP_UNCOMPRESSED:
+                                    return (
+                                        jsonify(
+                                            {
+                                                "error": (
+                                                    "Zip archive exceeds uncompressed size limit of 50 MB"
+                                                )
+                                            }
+                                        ),
+                                        400,
+                                    )
+                                if info.file_size > MAX_EML_SIZE:
+                                    return (
+                                        jsonify(
+                                            {
+                                                "error": (
+                                                    f"File in zip exceeds maximum limit of 10 MB: {info.filename}"
+                                                )
+                                            }
+                                        ),
+                                        400,
+                                    )
+                                eml_entries.append(info)
+
+                        for info in eml_entries:
+                            total_received += 1
+                            try:
+                                raw_bytes = zf.read(info)
+                                msg_id, is_new = ingest_eml_bytes(db_obj, raw_bytes, account_id=acc_id)
+                                message_ids.append(msg_id)
+                                if is_new:
+                                    ingested += 1
+                                else:
+                                    duplicates_or_existing += 1
+                            except Exception as e:
+                                logger.warning("Failed to ingest zip entry %s: %s", info.filename, e)
+                                failed += 1
+                except zipfile.BadZipFile:
+                    return jsonify({"error": "Corrupted or invalid zip archive"}), 400
+            elif lower_name.endswith(".eml") or f.content_type in (
+                "message/rfc822",
+                "application/octet-stream",
+                "text/plain",
+            ):
+                total_received += 1
+                try:
+                    raw_bytes = f.read()
+                    if len(raw_bytes) > MAX_EML_SIZE:
+                        return (
+                            jsonify(
+                                {"error": f"File exceeds maximum limit of 10 MB: {filename}"}
+                            ),
+                            400,
+                        )
+                    msg_id, is_new = ingest_eml_bytes(db_obj, raw_bytes, account_id=acc_id)
+                    message_ids.append(msg_id)
+                    if is_new:
+                        ingested += 1
+                    else:
+                        duplicates_or_existing += 1
+                except Exception as e:
+                    logger.warning("Failed to ingest file %s: %s", filename, e)
+                    failed += 1
+            else:
+                total_received += 1
+                failed += 1
+
+        return jsonify({
+            "status": "success",
+            "total_received": total_received,
+            "ingested": ingested,
+            "duplicates_or_existing": duplicates_or_existing,
+            "failed": failed,
+            "account_id": acc_id,
+            "message_ids": message_ids,
+        })
+    finally:
+        db_obj.close()
 
 
 @bp.route("/api/status")
