@@ -1096,6 +1096,7 @@
                 let completed = 0;
                 let uncertain = 0;
                 let failed = 0;
+                let pausedMs = 0;
                 const startTime = Date.now();
 
                 for (let i = 0; i < items.length; i++) {
@@ -1103,7 +1104,10 @@
 
                     if (state.paused) {
                         progressLabel.textContent = "Classification paused (" + completed + " of " + items.length + " done).";
+                        await Promise.all([loadStatus(), loadReview()]);
+                        const pauseStart = Date.now();
                         await new Promise(function (resolve) { state.pausePromiseResolve = resolve; });
+                        pausedMs += (Date.now() - pauseStart);
                         if (state.cancelled) { break; }
                     }
 
@@ -1114,7 +1118,7 @@
 
                     let etaStr = "";
                     if (i > 0) {
-                        const elapsedSec = (Date.now() - startTime) / 1000;
+                        const elapsedSec = Math.max(0.1, (Date.now() - startTime - pausedMs) / 1000);
                         const avgPerItem = elapsedSec / i;
                         const remainingSec = Math.round((items.length - i) * avgPerItem);
                         etaStr = " (~" + (remainingSec > 60 ? Math.round(remainingSec / 60) + "m" : remainingSec + "s") + " remaining)";
@@ -1128,6 +1132,8 @@
                         });
                         completed++;
                         if (res.abstain) { uncertain++; }
+                        // Stream proposal into review list in real time
+                        await Promise.all([loadStatus(), loadReview()]);
                     } catch (err) {
                         failed++;
                         if (err.message.includes("500") || err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
@@ -1154,15 +1160,14 @@
                 state.paused = false;
                 state.cancelled = false;
 
-                await Promise.all([loadStatus(), loadReview()]);
-
                 if (completed > 0) {
                     const filterState = document.getElementById("filter-state");
                     if (filterState) { filterState.value = "scored"; }
-                    await loadReview();
-                    if (state.items && state.items.length > 0) {
-                        selectItem(state.items[0].message_id);
-                    }
+                }
+                await Promise.all([loadStatus(), loadReview()]);
+
+                if (completed > 0 && state.items && state.items.length > 0) {
+                    selectItem(state.items[0].message_id);
                 }
 
                 setTimeout(function () {
