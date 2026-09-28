@@ -51,7 +51,8 @@
         .field { display: flex; flex-direction: column; gap: 0.25rem; }
         .field label { font-size: 0.75rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.04em; }
         select, input[type="text"] { padding: 0.4rem 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
-        button {
+        button, .btn {
+            display: inline-block;
             padding: 0.45rem 0.8rem;
             border: 1px solid #0f3460;
             background: #0f3460;
@@ -59,12 +60,14 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 0.85rem;
+            text-decoration: none;
+            box-sizing: border-box;
         }
-        button:hover:not(:disabled) { background: #1a1a2e; }
+        button:hover:not(:disabled), .btn:hover { background: #1a1a2e; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
-        button.secondary { background: white; color: #0f3460; }
-        button.secondary:hover:not(:disabled) { background: #eef2f7; }
-        button.danger { background: #8b1e1e; border-color: #8b1e1e; }
+        button.secondary, .btn.secondary { background: white; color: #0f3460; }
+        button.secondary:hover:not(:disabled), .btn.secondary:hover { background: #eef2f7; }
+        button.danger, .btn.danger { background: #8b1e1e; border-color: #8b1e1e; }
 
         .review-layout { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, 1.2fr); gap: 1rem; }
 
@@ -174,6 +177,56 @@
 
     <main>
         <div id="mode-banner" class="mode-banner" hidden></div>
+
+        <div id="ai-status-card" class="container" hidden style="margin-bottom: 1.25rem;">
+            <div id="ai-status-box" class="status-card" style="margin-bottom: 0;">
+                <div id="ai-status-offline" hidden>
+                    <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem; color: #842029;">Local AI Engine Needed</h3>
+                    <p class="muted" style="margin-bottom: 1rem;">
+                        Mailroom keeps your emails 100% private by analyzing them directly on your computer using Ollama.
+                    </p>
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer" class="btn">Download Ollama (Free)</a>
+                        <button type="button" id="ai-check-btn" class="secondary">Check Again</button>
+                    </div>
+                </div>
+
+                <div id="ai-status-missing" hidden>
+                    <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem; color: #664d03;">Model Download Required</h3>
+                    <p class="muted" style="margin-bottom: 1rem;">
+                        To start suggesting labels, Mailroom needs to download the local AI model <strong id="ai-missing-model-name"></strong> (approx. 2–5 GB depending on model). This only needs to happen once.
+                    </p>
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <button type="button" id="ai-download-btn">Download Model Now</button>
+                        <button type="button" id="ai-check-missing-btn" class="secondary">Check Again</button>
+                    </div>
+                </div>
+
+                <div id="ai-status-downloading" hidden>
+                    <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem;">Downloading AI Model...</h3>
+                    <p id="ai-download-status-text" class="muted" style="margin-bottom: 0.75rem;">Connecting to Ollama...</p>
+                    <div style="background: #e9ecef; border-radius: 4px; height: 12px; overflow: hidden; margin-bottom: 0.5rem;">
+                        <div id="ai-download-progress-bar" style="background: #0f3460; height: 100%; width: 0%; transition: width 0.2s;"></div>
+                    </div>
+                </div>
+
+                <div id="ai-status-ready" hidden>
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                        <span id="ai-ready-text" style="color: #0f5132; font-weight: 600;">✓ Local AI model is ready! You can now classify emails.</span>
+                        <button type="button" id="ai-recheck-btn" class="secondary" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">Refresh AI Status</button>
+                    </div>
+                </div>
+
+                <div id="ai-status-error" hidden>
+                    <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem; color: #842029;">Model Download Failed</h3>
+                    <p id="ai-error-text" class="muted" style="margin-bottom: 1rem; color: #842029;"></p>
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <button type="button" id="ai-retry-btn">Retry Download</button>
+                        <button type="button" id="ai-error-check-btn" class="secondary">Check Again</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div class="status-card">
             <div class="status-grid">
@@ -362,6 +415,10 @@
                 skipped: 0,
                 reviewed: 0,
                 exportToastTimeout: null,
+                aiReady: false,
+                aiModel: "",
+                downloadingModel: false,
+                unclassified: 0,
             };
             const LABEL_AXES = ["kind", "purchase", "retention"];
             const LABEL_AXIS_ORDER = ["kind", "purchase", "retention", "Other"];
@@ -422,11 +479,13 @@
                     updateExportUI();
 
                     const unclassified = data.unclassified || 0;
+                    state.unclassified = unclassified;
                     const classifyBtn = document.getElementById("classify-btn");
                     if (classifyBtn) {
                         classifyBtn.textContent = "Classify Pending (" + unclassified + ")";
                         if (!state.classifying) {
-                            classifyBtn.disabled = (unclassified === 0);
+                            classifyBtn.disabled = (!state.aiReady || unclassified === 0);
+                            classifyBtn.title = state.aiReady ? "Classify pending emails" : "Local AI model must be running and installed";
                         }
                     }
 
@@ -1025,6 +1084,180 @@
                 }, 5000);
             }
 
+            async function checkAiStatus() {
+                try {
+                    const data = await api("/api/ollama/status");
+                    state.aiStatus = data;
+                    state.aiModel = data.model || "";
+                    state.aiReady = !!data.ready;
+
+                    const missingModelName = document.getElementById("ai-missing-model-name");
+                    if (missingModelName) {
+                        missingModelName.textContent = data.model || "required model";
+                    }
+
+                    const readyText = document.getElementById("ai-ready-text");
+                    if (readyText) {
+                        readyText.textContent = "✓ Local AI model is ready (" + (data.model || "") + "). You can now classify emails.";
+                    }
+
+                    if (state.downloadingModel) {
+                        showAiState("downloading");
+                    } else if (!data.running) {
+                        showAiState("offline");
+                    } else if (!data.model_installed) {
+                        showAiState("missing");
+                    } else {
+                        showAiState("ready");
+                    }
+                } catch (e) {
+                    state.aiReady = false;
+                    showAiState("offline");
+                }
+
+                const classifyBtn = document.getElementById("classify-btn");
+                if (classifyBtn && !state.classifying) {
+                    const unclassified = state.unclassified || 0;
+                    classifyBtn.disabled = (!state.aiReady || unclassified === 0);
+                    classifyBtn.title = state.aiReady ? "Classify pending emails" : "Local AI model must be running and installed";
+                }
+            }
+
+            function showAiState(which) {
+                const card = document.getElementById("ai-status-card");
+                if (!card) { return; }
+                card.hidden = false;
+
+                const sections = ["offline", "missing", "downloading", "ready", "error"];
+                sections.forEach(function (sec) {
+                    const el = document.getElementById("ai-status-" + sec);
+                    if (el) { el.hidden = (sec !== which); }
+                });
+            }
+
+            function showAiError(msg) {
+                const errText = document.getElementById("ai-error-text");
+                if (errText) { errText.textContent = msg; }
+                showAiState("error");
+            }
+
+            async function startModelDownload() {
+                state.downloadingModel = true;
+                showAiState("downloading");
+
+                const statusText = document.getElementById("ai-download-status-text");
+                const progressBar = document.getElementById("ai-download-progress-bar");
+                if (statusText) { statusText.textContent = "Connecting to Ollama..."; }
+                if (progressBar) { progressBar.style.width = "0%"; }
+
+                let lastBytes = 0;
+                let lastTime = Date.now();
+                let speed = 0;
+
+                try {
+                    const response = await fetch("/api/ollama/pull", {
+                        method: "POST",
+                        headers: {
+                            "Accept": "text/event-stream",
+                            "Content-Type": "application/json",
+                            "X-CSRF-Token": csrfToken,
+                        },
+                        body: JSON.stringify({ model: state.aiModel || "" }),
+                    });
+
+                    if (!response.ok) {
+                        let errText = "HTTP " + response.status;
+                        try {
+                            const errData = await response.json();
+                            if (errData && errData.error) { errText = errData.error; }
+                        } catch (e) { /* ignore */ }
+                        throw new Error(errText);
+                    }
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder("utf-8");
+                    let buffer = "";
+
+                    while (true) {
+                        const result = await reader.read();
+                        if (result.done) { break; }
+                        buffer += decoder.decode(result.value, { stream: true });
+
+                        const lines = buffer.split("\n");
+                        buffer = lines.pop();
+
+                        for (let i = 0; i < lines.length; i++) {
+                            const line = lines[i].trim();
+                            if (!line || !line.startsWith("data:")) { continue; }
+                            const jsonStr = line.substring(5).trim();
+                            if (!jsonStr) { continue; }
+
+                            let item = null;
+                            try { item = JSON.parse(jsonStr); } catch (e) { continue; }
+
+                            if (item.error) {
+                                throw new Error(item.error);
+                            }
+
+                            if (item.total && item.completed) {
+                                const completed = item.completed;
+                                const total = item.total;
+                                const pct = Math.min(100, Math.round((completed / total) * 100));
+
+                                const now = Date.now();
+                                const timeDelta = (now - lastTime) / 1000;
+                                if (timeDelta >= 1.0) {
+                                    const bytesDelta = completed - lastBytes;
+                                    speed = bytesDelta / timeDelta;
+                                    lastBytes = completed;
+                                    lastTime = now;
+                                }
+
+                                const speedMB = speed > 0 ? (speed / (1024 * 1024)).toFixed(1) + " MB/s" : "...";
+                                let remainingStr = "";
+                                if (speed > 0 && total > completed) {
+                                    const secs = Math.round((total - completed) / speed);
+                                    if (secs < 60) {
+                                        remainingStr = "approx. " + secs + "s remaining";
+                                    } else {
+                                        remainingStr = "approx. " + Math.round(secs / 60) + " min remaining";
+                                    }
+                                }
+
+                                const completedGB = (completed / (1024 * 1024 * 1024)).toFixed(1);
+                                const totalGB = (total / (1024 * 1024 * 1024)).toFixed(1);
+
+                                if (progressBar) { progressBar.style.width = pct + "%"; }
+                                if (statusText) {
+                                    let text = "Downloading model: " + pct + "% (" + completedGB + " GB / " + totalGB + " GB)";
+                                    if (speed > 0) { text += " — " + speedMB; }
+                                    if (remainingStr) { text += " (" + remainingStr + ")"; }
+                                    statusText.textContent = text;
+                                }
+                            } else if (item.status) {
+                                if (item.status === "success") {
+                                    if (progressBar) { progressBar.style.width = "100%"; }
+                                    if (statusText) { statusText.textContent = "Model download complete!"; }
+                                    state.aiReady = true;
+                                    state.downloadingModel = false;
+                                    showAiState("ready");
+                                    await loadStatus();
+                                    return;
+                                } else if (statusText) {
+                                    statusText.textContent = item.status;
+                                }
+                            }
+                        }
+                    }
+
+                    state.downloadingModel = false;
+                    await checkAiStatus();
+                } catch (e) {
+                    state.downloadingModel = false;
+                    showAiError(e.message || "Failed to download model");
+                }
+            }
+
             async function extractFilesFromDataTransfer(dataTransfer) {
                 const files = [];
                 if (dataTransfer.items && dataTransfer.items.length > 0) {
@@ -1343,10 +1576,27 @@
                 });
                 document.getElementById("label-save").addEventListener("click", saveLabel);
                 document.getElementById("label-cancel").addEventListener("click", resetLabelForm);
+                const aiCheckBtn = document.getElementById("ai-check-btn");
+                if (aiCheckBtn) { aiCheckBtn.addEventListener("click", checkAiStatus); }
+                const aiCheckMissingBtn = document.getElementById("ai-check-missing-btn");
+                if (aiCheckMissingBtn) { aiCheckMissingBtn.addEventListener("click", checkAiStatus); }
+                const aiRecheckBtn = document.getElementById("ai-recheck-btn");
+                if (aiRecheckBtn) { aiRecheckBtn.addEventListener("click", checkAiStatus); }
+                const aiErrorCheckBtn = document.getElementById("ai-error-check-btn");
+                if (aiErrorCheckBtn) { aiErrorCheckBtn.addEventListener("click", checkAiStatus); }
+                const aiDownloadBtn = document.getElementById("ai-download-btn");
+                if (aiDownloadBtn) { aiDownloadBtn.addEventListener("click", startModelDownload); }
+                const aiRetryBtn = document.getElementById("ai-retry-btn");
+                if (aiRetryBtn) { aiRetryBtn.addEventListener("click", startModelDownload); }
 
+                checkAiStatus();
                 loadStatus();
                 loadLabels().then(function () { loadReview(); loadConflicts(); });
-                setInterval(loadStatus, 5000);
+                setInterval(function () {
+                    if (!state.downloadingModel) {
+                        loadStatus();
+                    }
+                }, 5000);
             }
 
             document.addEventListener("DOMContentLoaded", init);

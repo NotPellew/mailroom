@@ -526,10 +526,10 @@ def run_server(args, config):
 
 def _is_model_installed(model_id: str, available_models: list) -> bool:
     """Check if model_id is present in available Ollama models, accounting for tags."""
-    return any(
-        m == model_id or m.startswith(f"{model_id}:") or model_id.startswith(f"{m}:")
-        for m in available_models
-    )
+    from Mailroom.classification import is_model_installed
+
+    return is_model_installed(model_id, available_models)
+
 
 
 def doctor_cmd(args, config) -> int:
