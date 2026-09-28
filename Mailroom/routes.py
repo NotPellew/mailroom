@@ -1312,3 +1312,180 @@ def api_ollama_pull():
         },
     )
 
+
+@bp.route("/api/system/health")
+def api_system_health():
+    """Visual system health dashboard metrics."""
+    config = _get_config()
+    db_path = config.database_path
+    st = get_status(db_path)
+    db_status = "ready" if st.get("db_initialized") else "not_initialized"
+    db_info = {
+        "status": db_status,
+        "path": str(db_path),
+        "messages": st.get("messages", 0),
+        "decisions": st.get("reviewed", 0),
+        "unclassified": st.get("unclassified", 0),
+    }
+
+    endpoint = config.model_endpoint
+    provider = config.model_provider
+    model_id = config.model_id
+
+    from Mailroom.classification import (
+        detect_provider,
+        probe_model_endpoint,
+        is_model_installed,
+        ClassificationError,
+    )
+
+    if not is_loopback_url(endpoint):
+        ai_info = {
+            "status": "offline",
+            "provider": provider,
+            "model": model_id,
+            "endpoint": endpoint,
+            "available_models": [],
+            "error": "Model endpoint is not a loopback URL",
+        }
+    else:
+        eff_provider = detect_provider(endpoint, explicit_provider=provider)
+        probe_timeout = min(getattr(config, "timeout", 30.0), 3.0)
+        try:
+            available_models = probe_model_endpoint(endpoint, timeout=probe_timeout, provider=eff_provider)
+            if eff_provider == "ollama":
+                installed = is_model_installed(model_id, available_models)
+                ai_status = "ready" if installed else "action_needed"
+            else:
+                ai_status = "ready"
+            ai_info = {
+                "status": ai_status,
+                "provider": eff_provider,
+                "model": model_id,
+                "endpoint": endpoint,
+                "available_models": available_models,
+                "error": None,
+            }
+        except (ClassificationError, Exception) as exc:
+            ai_info = {
+                "status": "offline",
+                "provider": eff_provider,
+                "model": model_id,
+                "endpoint": endpoint,
+                "available_models": [],
+                "error": str(exc),
+            }
+
+    from Mailroom.gmail import check_gmail_dependencies, _read_last_email
+    gmail_deps_ok, _ = check_gmail_dependencies()
+    stored_account = None
+    if gmail_deps_ok:
+        try:
+            stored_account = _read_last_email(config)
+        except Exception:
+            stored_account = None
+
+    gmail_info = {
+        "status": "connected" if stored_account else "local_only",
+        "account": stored_account,
+        "dependencies_installed": gmail_deps_ok,
+    }
+
+    onboarding_info = {
+        "completed": bool(config.get("onboarding_completed", False)),
+        "profile": config.get("hardware_profile"),
+        "taxonomy": config.get("taxonomy_archetype"),
+    }
+
+    return jsonify({
+        "database": db_info,
+        "ai": ai_info,
+        "gmail": gmail_info,
+        "onboarding": onboarding_info,
+    })
+
+
+@bp.route("/api/config/setup", methods=["POST"])
+def api_config_setup():
+    """First-launch onboarding setup endpoint."""
+    config = _get_config()
+    data = request.get_json(silent=True) or {}
+
+    from Mailroom.config import (
+        HARDWARE_PROFILES,
+        Config,
+        single_label_taxonomy,
+        ConfigError,
+    )
+    from Mailroom.db import DB
+
+    if data.get("skip"):
+        config._config["onboarding_completed"] = True
+        try:
+            config.validate()
+            config.save()
+        except ConfigError as err:
+            return jsonify({"error": str(err)}), 400
+        try:
+            DB(config.database_path).close()
+        except Exception as e:
+            logger.warning("Could not initialize database on skip: %s", e)
+        return jsonify({"status": "success", "skipped": True})
+
+    profile = data.get("profile", "standard")
+    if profile not in HARDWARE_PROFILES:
+        return jsonify({
+            "error": f"Invalid profile: '{profile}'. Must be one of: {list(HARDWARE_PROFILES.keys())}"
+        }), 400
+
+    taxonomy = data.get("taxonomy", "standard")
+    if taxonomy not in ("standard", "single-label"):
+        return jsonify({
+            "error": f"Invalid taxonomy: '{taxonomy}'. Must be 'standard' or 'single-label'"
+        }), 400
+
+    if taxonomy == "single-label":
+        target_label = data.get("target_label", "Rechnungen")
+        if not isinstance(target_label, str) or not target_label.strip() or len(target_label.strip()) > 64:
+            return jsonify({"error": "target_label must be a non-empty string under 64 characters"}), 400
+        target_label = target_label.strip()
+        try:
+            labels = single_label_taxonomy(target_label)
+        except ConfigError as err:
+            return jsonify({"error": str(err)}), 400
+        scan_query = Config.DOCUMENTS_ATTACHMENT_QUERY
+    else:
+        labels = Config.DEFAULT_LABELS
+        scan_query = Config.DEFAULT_SCAN_QUERY
+
+    hw_profile = HARDWARE_PROFILES[profile]
+    config._config["model"] = {
+        "endpoint": hw_profile["endpoint"],
+        "id": hw_profile["id"],
+        "provider": hw_profile["provider"],
+    }
+    config._config["labels"] = labels
+    config._config["scan_query"] = scan_query
+    config._config["onboarding_completed"] = True
+    config._config["hardware_profile"] = profile
+    config._config["taxonomy_archetype"] = taxonomy
+
+    try:
+        config.validate()
+        config.save()
+    except ConfigError as err:
+        return jsonify({"error": str(err)}), 400
+
+    try:
+        DB(config.database_path).close()
+    except Exception as e:
+        logger.warning("Could not initialize database on setup: %s", e)
+
+    return jsonify({
+        "status": "success",
+        "profile": profile,
+        "taxonomy": taxonomy,
+        "labels_count": len(labels),
+    })
+
+

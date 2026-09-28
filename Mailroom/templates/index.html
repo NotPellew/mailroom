@@ -157,6 +157,126 @@
             justify-content: center;
             flex-wrap: wrap;
         }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(15, 20, 35, 0.65);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        .modal-overlay[hidden] {
+            display: none !important;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            max-width: 650px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+            padding: 1.5rem 2rem;
+            position: relative;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e3e6ea;
+            padding-bottom: 0.75rem;
+            margin-bottom: 1.25rem;
+        }
+        .modal-close-btn {
+            background: transparent;
+            border: none;
+            font-size: 1.5rem;
+            line-height: 1;
+            color: #6c757d;
+            cursor: pointer;
+            padding: 0.2rem 0.5rem;
+        }
+        .modal-close-btn:hover {
+            color: #1a1a2e;
+        }
+        .wizard-stepper {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.25rem;
+        }
+        .wizard-step {
+            flex: 1;
+            text-align: center;
+            font-size: 0.8rem;
+            padding: 0.45rem 0.2rem;
+            border-radius: 4px;
+            background: #e9ecef;
+            color: #6c757d;
+            font-weight: 500;
+        }
+        .wizard-step.active {
+            background: #0f3460;
+            color: white;
+            font-weight: 600;
+        }
+        .option-card {
+            border: 2px solid #e3e6ea;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .option-card:hover {
+            border-color: #a0c4ff;
+            background: #f8fbff;
+        }
+        .option-card.selected {
+            border-color: #0f3460;
+            background: #f0f5fa;
+        }
+        .health-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        @media (min-width: 600px) {
+            .health-grid {
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            }
+        }
+        .health-card {
+            border: 1px solid #e3e6ea;
+            border-radius: 6px;
+            padding: 1rem;
+            background: #fbfcfd;
+        }
+        .health-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+        }
+        .health-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .health-indicator.green { background: #28a745; }
+        .health-indicator.yellow { background: #ffc107; }
+        .health-indicator.red { background: #dc3545; }
+        .health-indicator.gray { background: #adb5bd; }
     </style>
 </head>
 <body>
@@ -166,12 +286,12 @@
     </header>
 
     <nav>
-        <a href="/health" target="_blank" rel="noopener noreferrer">Health</a>
+        <button id="health-modal-toggle" class="nav-toggle" type="button">System Health</button>
         <a href="/api/labels" target="_blank" rel="noopener noreferrer">Labels</a>
         <a href="/api/status" target="_blank" rel="noopener noreferrer">Status</a>
         <button id="import-toggle" class="nav-toggle" type="button">Import mail</button>
         <button id="labels-toggle" class="nav-toggle" type="button">Manage labels</button>
-        <a href="#export-card" class="nav-toggle" style="text-decoration:none;">Export</a>
+        <button id="export-toggle" class="nav-toggle" type="button">Export</button>
         <span class="counts" id="nav-counts"></span>
     </nav>
 
@@ -186,7 +306,7 @@
                         Mailroom keeps your emails 100% private by analyzing them directly on your computer using Ollama.
                     </p>
                     <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-                        <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer" class="btn">Download Ollama (Free)</a>
+                        <button type="button" class="btn" id="ai-download-ollama-btn">Download Ollama (Free)</button>
                         <button type="button" id="ai-check-btn" class="secondary">Check Again</button>
                     </div>
                 </div>
@@ -395,6 +515,183 @@
                 <div id="export-toast" class="toast" style="display: none; margin-top: 0.75rem;"></div>
             </div>
         </div>
+
+        <!-- First-Launch Onboarding Wizard Modal -->
+        <div id="onboarding-modal" class="modal-overlay" hidden>
+            <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
+                <div class="modal-header">
+                    <div>
+                        <h2 id="wizard-title" style="font-size: 1.3rem; color: #1a1a2e;">Welcome to Mailroom</h2>
+                        <p class="muted" style="margin-top: 0.15rem;">Set up your local, private email organizer in 3 easy steps.</p>
+                    </div>
+                    <button type="button" id="wizard-skip-btn" class="modal-close-btn" title="Skip setup">&times;</button>
+                </div>
+                <div class="wizard-stepper">
+                    <div id="wizard-step-1-ind" class="wizard-step active">1. Sorting Goal</div>
+                    <div id="wizard-step-2-ind" class="wizard-step">2. Hardware Profile</div>
+                    <div id="wizard-step-3-ind" class="wizard-step">3. Ready</div>
+                </div>
+
+                <!-- Step 1: Goal -->
+                <div id="wizard-step-1">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">Step 1: Choose Your Mail Sorting Goal</h3>
+                    <p class="muted" style="margin-bottom: 1rem;">Choose how Mailroom will organize and suggest labels for your incoming emails.</p>
+
+                    <div class="option-card selected" id="opt-goal-standard" data-value="standard">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                            <strong style="font-size: 0.95rem; color: #0f3460;">Comprehensive Inbox Organization</strong>
+                            <span class="badge proposed">Recommended</span>
+                        </div>
+                        <p class="muted" style="font-size: 0.85rem; line-height: 1.4;">
+                            Suggests multi-axis labels across Kind (Newsletters, Personal, Updates, Receipts), Action Needs (Reply, Action), and Retention periods. Best for general email triage.
+                        </p>
+                    </div>
+
+                    <div class="option-card" id="opt-goal-single" data-value="single-label">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                            <strong style="font-size: 0.95rem; color: #0f3460;">Invoice &amp; Receipt Catcher</strong>
+                            <span class="badge unreviewed">Single-Target</span>
+                        </div>
+                        <p class="muted" style="font-size: 0.85rem; line-height: 1.4;">
+                            Specifically targets and detects invoices, receipts, and bills (Rechnungen/Belege). Ideal for accounting, tax prep, and running fast on lightweight hardware.
+                        </p>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.25rem;">
+                        <button type="button" id="wizard-skip-link" class="secondary" style="font-size: 0.8rem; border: none; text-decoration: underline;">Skip setup</button>
+                        <button type="button" id="wizard-step-1-next">Next: Hardware Profile &rarr;</button>
+                    </div>
+                </div>
+
+                <!-- Step 2: Hardware Profile -->
+                <div id="wizard-step-2" hidden>
+                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">Step 2: Choose Your Hardware &amp; Speed Profile</h3>
+                    <p class="muted" style="margin-bottom: 1rem;">Mailroom runs AI 100% locally on your computer. Pick the model that fits your machine.</p>
+
+                    <div class="option-card selected" id="opt-profile-standard" data-value="standard">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                            <strong style="font-size: 0.95rem; color: #0f3460;">Standard Profile (qwen2.5:7b)</strong>
+                            <span class="badge proposed">Default</span>
+                        </div>
+                        <p class="muted" style="font-size: 0.85rem; line-height: 1.4;">
+                            Balanced speed and high accuracy (~4.7 GB model). Recommended for Apple Silicon Macs (M1/M2/M3/M4) or computers with 8–16 GB RAM / dedicated GPU.
+                        </p>
+                    </div>
+
+                    <div class="option-card" id="opt-profile-lightweight" data-value="lightweight">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                            <strong style="font-size: 0.95rem; color: #0f3460;">Lightweight Profile (qwen2.5:3b)</strong>
+                            <span class="badge unreviewed">Fast</span>
+                        </div>
+                        <p class="muted" style="font-size: 0.85rem; line-height: 1.4;">
+                            Fast classification optimized for laptops, older hardware, or computers with 4–8 GB RAM (~2.0 GB model).
+                        </p>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.25rem;">
+                        <button type="button" id="wizard-step-2-back" class="secondary">&larr; Back</button>
+                        <button type="button" id="wizard-step-2-next">Next: Review &amp; Finish &rarr;</button>
+                    </div>
+                </div>
+
+                <!-- Step 3: Confirmation -->
+                <div id="wizard-step-3" hidden>
+                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">Step 3: Ready to Go!</h3>
+                    <p class="muted" style="margin-bottom: 1rem;">Review your setup choices. You can change these anytime in settings.</p>
+
+                    <div class="status-card" style="background: #f8f9fa; border: 1px solid #e3e6ea; margin-bottom: 1.25rem;">
+                        <div style="margin-bottom: 0.6rem;">
+                            <span class="muted" style="display: block; font-size: 0.75rem; text-transform: uppercase;">Sorting Goal</span>
+                            <strong id="wizard-summary-goal" style="font-size: 0.95rem; color: #1a1a2e;">Comprehensive Inbox Organization</strong>
+                        </div>
+                        <div style="margin-bottom: 0.6rem;">
+                            <span class="muted" style="display: block; font-size: 0.75rem; text-transform: uppercase;">Hardware &amp; AI Model</span>
+                            <strong id="wizard-summary-profile" style="font-size: 0.95rem; color: #1a1a2e;">Standard Profile (qwen2.5:7b)</strong>
+                        </div>
+                        <div>
+                            <span class="muted" style="display: block; font-size: 0.75rem; text-transform: uppercase;">Privacy &amp; Security</span>
+                            <strong style="font-size: 0.95rem; color: #198754;">100% Local Inference (Zero data leaves your computer)</strong>
+                        </div>
+                    </div>
+
+                    <div id="wizard-error" class="toast err" style="display: none; margin-bottom: 1rem;"></div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.25rem;">
+                        <button type="button" id="wizard-step-3-back" class="secondary">&larr; Back</button>
+                        <button type="button" id="wizard-finish-btn" style="padding: 0.6rem 1.2rem; font-size: 0.95rem; font-weight: 600;">Get Started</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- In-App System Health Dashboard Modal -->
+        <div id="health-modal" class="modal-overlay" hidden>
+            <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="health-title" style="max-width: 700px;">
+                <div class="modal-header">
+                    <div>
+                        <h2 id="health-title" style="font-size: 1.3rem; color: #1a1a2e;">System Health Dashboard</h2>
+                        <p class="muted" style="margin-top: 0.15rem;">Live status of database, AI engine, and storage.</p>
+                    </div>
+                    <button type="button" id="health-close-btn" class="modal-close-btn" title="Close">&times;</button>
+                </div>
+
+                <div class="health-grid">
+                    <!-- Database Card -->
+                    <div class="health-card">
+                        <div class="health-card-header">
+                            <span id="health-db-ind" class="health-indicator green"></span>
+                            <span>Local Database</span>
+                        </div>
+                        <div id="health-db-status" style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.4rem; color: #155724;">Ready</div>
+                        <p class="muted" style="font-size: 0.8rem; margin-bottom: 0.25rem;">
+                            Messages: <strong id="health-db-messages">0</strong>
+                        </p>
+                        <p class="muted" style="font-size: 0.8rem; margin-bottom: 0.25rem;">
+                            Decisions: <strong id="health-db-decisions">0</strong>
+                        </p>
+                        <p class="muted" style="font-size: 0.75rem; word-break: break-all; margin-top: 0.5rem;" id="health-db-path"></p>
+                    </div>
+
+                    <!-- AI Engine Card -->
+                    <div class="health-card">
+                        <div class="health-card-header">
+                            <span id="health-ai-ind" class="health-indicator yellow"></span>
+                            <span>Local AI Engine</span>
+                        </div>
+                        <div id="health-ai-status" style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.4rem;">Checking...</div>
+                        <p class="muted" style="font-size: 0.8rem; margin-bottom: 0.25rem;">
+                            Model: <strong id="health-ai-model"></strong>
+                        </p>
+                        <p class="muted" style="font-size: 0.8rem; margin-bottom: 0.5rem;">
+                            Endpoint: <span id="health-ai-endpoint" style="font-family: ui-monospace, monospace; font-size: 0.75rem;"></span>
+                        </p>
+                        <div id="health-ai-advice" style="font-size: 0.8rem; margin-top: 0.4rem; line-height: 1.3;"></div>
+                        <div id="health-ai-action" style="margin-top: 0.6rem;"></div>
+                    </div>
+
+                    <!-- Gmail Connection Card -->
+                    <div class="health-card">
+                        <div class="health-card-header">
+                            <span id="health-gmail-ind" class="health-indicator gray"></span>
+                            <span>Gmail Connection</span>
+                        </div>
+                        <div id="health-gmail-status" style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.4rem; color: #495057;">Local-Only Mode</div>
+                        <p id="health-gmail-account" class="muted" style="font-size: 0.8rem; margin-bottom: 0.4rem;">No Gmail account linked.</p>
+                        <p class="muted" style="font-size: 0.75rem; line-height: 1.3;">
+                            Gmail integration is optional. All features run locally with imported .eml files.
+                        </p>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #e3e6ea; padding-top: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <button type="button" id="health-rerun-wizard-btn" class="secondary" style="font-size: 0.85rem;">Run Setup Wizard</button>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" id="health-refresh-btn" class="secondary" style="font-size: 0.85rem;">Refresh</button>
+                        <button type="button" id="health-done-btn" style="font-size: 0.85rem;">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </main>
 
     <script>
@@ -419,6 +716,9 @@
                 aiModel: "",
                 downloadingModel: false,
                 unclassified: 0,
+                wizardGoal: "standard",
+                wizardProfile: "standard",
+                wizardBusy: false,
             };
             const LABEL_AXES = ["kind", "purchase", "retention"];
             const LABEL_AXIS_ORDER = ["kind", "purchase", "retention", "Other"];
@@ -1478,6 +1778,284 @@
                 }, 4000);
             }
 
+            // --- First-Launch Onboarding Wizard ---
+            function openOnboardingModal() {
+                const modal = document.getElementById("onboarding-modal");
+                if (modal) {
+                    goToWizardStep(1);
+                    modal.hidden = false;
+                }
+            }
+
+            function closeOnboardingModal() {
+                const modal = document.getElementById("onboarding-modal");
+                if (modal) {
+                    modal.hidden = true;
+                }
+            }
+
+            function goToWizardStep(stepNum) {
+                const s1 = document.getElementById("wizard-step-1");
+                const s2 = document.getElementById("wizard-step-2");
+                const s3 = document.getElementById("wizard-step-3");
+                const ind1 = document.getElementById("wizard-step-1-ind");
+                const ind2 = document.getElementById("wizard-step-2-ind");
+                const ind3 = document.getElementById("wizard-step-3-ind");
+
+                if (s1) { s1.hidden = (stepNum !== 1); }
+                if (s2) { s2.hidden = (stepNum !== 2); }
+                if (s3) { s3.hidden = (stepNum !== 3); }
+
+                if (ind1) { ind1.className = (stepNum === 1) ? "wizard-step active" : "wizard-step"; }
+                if (ind2) { ind2.className = (stepNum === 2) ? "wizard-step active" : "wizard-step"; }
+                if (ind3) { ind3.className = (stepNum === 3) ? "wizard-step active" : "wizard-step"; }
+
+                if (stepNum === 3) {
+                    updateWizardSummary();
+                }
+            }
+
+            function selectWizardGoal(goal) {
+                state.wizardGoal = goal;
+                const optStd = document.getElementById("opt-goal-standard");
+                const optSingle = document.getElementById("opt-goal-single");
+                if (optStd) {
+                    optStd.classList.toggle("selected", goal === "standard");
+                }
+                if (optSingle) {
+                    optSingle.classList.toggle("selected", goal === "single-label");
+                }
+            }
+
+            function selectWizardProfile(profile) {
+                state.wizardProfile = profile;
+                const optStd = document.getElementById("opt-profile-standard");
+                const optLight = document.getElementById("opt-profile-lightweight");
+                if (optStd) {
+                    optStd.classList.toggle("selected", profile === "standard");
+                }
+                if (optLight) {
+                    optLight.classList.toggle("selected", profile === "lightweight");
+                }
+            }
+
+            function updateWizardSummary() {
+                const goalSummary = document.getElementById("wizard-summary-goal");
+                const profileSummary = document.getElementById("wizard-summary-profile");
+                if (goalSummary) {
+                    goalSummary.textContent = (state.wizardGoal === "single-label")
+                        ? "Invoice & Receipt Catcher (Single-Target)"
+                        : "Comprehensive Inbox Organization (Standard)";
+                }
+                if (profileSummary) {
+                    profileSummary.textContent = (state.wizardProfile === "lightweight")
+                        ? "Lightweight Profile (qwen2.5:3b)"
+                        : "Standard Profile (qwen2.5:7b)";
+                }
+            }
+
+            async function finishWizard() {
+                if (state.wizardBusy) { return; }
+                state.wizardBusy = true;
+                const finishBtn = document.getElementById("wizard-finish-btn");
+                const errDiv = document.getElementById("wizard-error");
+                if (finishBtn) {
+                    finishBtn.disabled = true;
+                    finishBtn.textContent = "Setting up...";
+                }
+                if (errDiv) { errDiv.style.display = "none"; }
+
+                try {
+                    const res = await api("/api/config/setup", {
+                        method: "POST",
+                        body: {
+                            profile: state.wizardProfile || "standard",
+                            taxonomy: state.wizardGoal || "standard",
+                        },
+                    });
+                    if (res && res.error) {
+                        throw new Error(res.error);
+                    }
+                    closeOnboardingModal();
+                    showExportToast("Setup complete! Welcome to Mailroom.");
+                    checkAiStatus();
+                    loadStatus();
+                    loadLabels().then(function () {
+                        loadReview();
+                    });
+                } catch (err) {
+                    if (errDiv) {
+                        errDiv.textContent = "Setup error: " + (err.message || String(err));
+                        errDiv.style.display = "block";
+                    }
+                } finally {
+                    state.wizardBusy = false;
+                    if (finishBtn) {
+                        finishBtn.disabled = false;
+                        finishBtn.textContent = "Get Started";
+                    }
+                }
+            }
+
+            async function skipWizard() {
+                if (state.wizardBusy) { return; }
+                state.wizardBusy = true;
+                try {
+                    await api("/api/config/setup", {
+                        method: "POST",
+                        body: { skip: true },
+                    });
+                } catch (e) {
+                    console.error("Skip setup error:", e);
+                } finally {
+                    state.wizardBusy = false;
+                    closeOnboardingModal();
+                }
+            }
+
+            // --- In-App System Health Dashboard ---
+            function openHealthModal() {
+                const modal = document.getElementById("health-modal");
+                if (modal) {
+                    modal.hidden = false;
+                    loadSystemHealth();
+                }
+            }
+
+            function closeHealthModal() {
+                const modal = document.getElementById("health-modal");
+                if (modal) {
+                    modal.hidden = true;
+                }
+            }
+
+            async function loadSystemHealth() {
+                const dbStatus = document.getElementById("health-db-status");
+                const dbMessages = document.getElementById("health-db-messages");
+                const dbDecisions = document.getElementById("health-db-decisions");
+                const dbPath = document.getElementById("health-db-path");
+                const dbInd = document.getElementById("health-db-ind");
+
+                const aiStatus = document.getElementById("health-ai-status");
+                const aiModel = document.getElementById("health-ai-model");
+                const aiEndpoint = document.getElementById("health-ai-endpoint");
+                const aiAdvice = document.getElementById("health-ai-advice");
+                const aiAction = document.getElementById("health-ai-action");
+                const aiInd = document.getElementById("health-ai-ind");
+
+                const gmailStatus = document.getElementById("health-gmail-status");
+                const gmailAccount = document.getElementById("health-gmail-account");
+                const gmailInd = document.getElementById("health-gmail-ind");
+
+                try {
+                    const health = await api("/api/system/health");
+                    if (!health) { return; }
+
+                    // Database Card
+                    if (health.database) {
+                        const isReady = health.database.status === "ready";
+                        if (dbInd) { dbInd.className = "health-indicator " + (isReady ? "green" : "yellow"); }
+                        if (dbStatus) {
+                            dbStatus.textContent = isReady ? "Ready" : "Not Initialized";
+                            dbStatus.style.color = isReady ? "#155724" : "#856404";
+                        }
+                        if (dbMessages) { dbMessages.textContent = String(health.database.messages || 0); }
+                        if (dbDecisions) { dbDecisions.textContent = String(health.database.decisions || 0); }
+                        if (dbPath) { dbPath.textContent = health.database.path || ""; }
+                    }
+
+                    // AI Engine Card
+                    if (health.ai) {
+                        if (aiModel) { aiModel.textContent = health.ai.model || "(none)"; }
+                        if (aiEndpoint) { aiEndpoint.textContent = health.ai.endpoint || ""; }
+                        if (aiAction) { aiAction.replaceChildren(); }
+
+                        if (health.ai.status === "ready") {
+                            if (aiInd) { aiInd.className = "health-indicator green"; }
+                            if (aiStatus) {
+                                aiStatus.textContent = "Connected & Ready";
+                                aiStatus.style.color = "#155724";
+                            }
+                            if (aiAdvice) {
+                                aiAdvice.textContent = "Local AI engine is running and ready for private inference.";
+                                aiAdvice.style.color = "#155724";
+                            }
+                        } else if (health.ai.status === "action_needed") {
+                            if (aiInd) { aiInd.className = "health-indicator yellow"; }
+                            if (aiStatus) {
+                                aiStatus.textContent = "Action Needed";
+                                aiStatus.style.color = "#664d03";
+                            }
+                            if (aiAdvice) {
+                                aiAdvice.textContent = "Model needs to be downloaded before you can classify emails.";
+                                aiAdvice.style.color = "#664d03";
+                            }
+                            if (aiAction) {
+                                const dlBtn = el("button", { type: "button", text: "Download Model Now" });
+                                dlBtn.addEventListener("click", function () {
+                                    closeHealthModal();
+                                    startModelDownload();
+                                });
+                                aiAction.appendChild(dlBtn);
+                            }
+                        } else {
+                            if (aiInd) { aiInd.className = "health-indicator red"; }
+                            if (aiStatus) {
+                                aiStatus.textContent = "Offline";
+                                aiStatus.style.color = "#842029";
+                            }
+                            if (aiAdvice) {
+                                aiAdvice.textContent = health.ai.error
+                                    ? ("Ollama not responding: " + health.ai.error)
+                                    : "Ollama is not running. Please start Ollama or download it from ollama.com.";
+                                aiAdvice.style.color = "#842029";
+                            }
+                            if (aiAction) {
+                                const btn = el("button", {
+                                    type: "button",
+                                    class: "btn",
+                                    text: "Download Ollama (Free)"
+                                });
+                                btn.style.fontSize = "0.8rem";
+                                btn.style.padding = "0.3rem 0.6rem";
+                                btn.addEventListener("click", function () {
+                                    window.open("https://ollama.com/download", "_blank", "noopener,noreferrer");
+                                });
+                                aiAction.appendChild(btn);
+                            }
+                        }
+                    }
+
+                    // Gmail Card
+                    if (health.gmail) {
+                        const isConn = health.gmail.status === "connected";
+                        if (gmailInd) { gmailInd.className = "health-indicator " + (isConn ? "green" : "gray"); }
+                        if (gmailStatus) {
+                            gmailStatus.textContent = isConn ? "Connected" : "Local-Only Mode";
+                            gmailStatus.style.color = isConn ? "#155724" : "#495057";
+                        }
+                        if (gmailAccount) {
+                            gmailAccount.textContent = isConn
+                                ? ("Linked account: " + health.gmail.account)
+                                : "No Gmail account linked (Local mode active).";
+                        }
+                    }
+                } catch (err) {
+                    console.error("Failed to load system health:", err);
+                }
+            }
+
+            async function checkOnboarding() {
+                try {
+                    const health = await api("/api/system/health");
+                    if (health && health.onboarding && !health.onboarding.completed && health.database && health.database.messages === 0) {
+                        openOnboardingModal();
+                    }
+                } catch (err) {
+                    console.error("Onboarding check failed:", err);
+                }
+            }
+
             function init() {
                 document.getElementById("refresh-btn").addEventListener("click", function () { loadReview(); loadStatus(); });
                 document.getElementById("classify-btn").addEventListener("click", startBatchClassification);
@@ -1588,9 +2166,88 @@
                 if (aiDownloadBtn) { aiDownloadBtn.addEventListener("click", startModelDownload); }
                 const aiRetryBtn = document.getElementById("ai-retry-btn");
                 if (aiRetryBtn) { aiRetryBtn.addEventListener("click", startModelDownload); }
+                const aiDlOllamaBtn = document.getElementById("ai-download-ollama-btn");
+                if (aiDlOllamaBtn) {
+                    aiDlOllamaBtn.addEventListener("click", function () {
+                        window.open("https://ollama.com/download", "_blank", "noopener,noreferrer");
+                    });
+                }
+                const exportToggle = document.getElementById("export-toggle");
+                if (exportToggle) {
+                    exportToggle.addEventListener("click", function () {
+                        const card = document.getElementById("export-card");
+                        if (card) { card.scrollIntoView({ behavior: "smooth" }); }
+                    });
+                }
+
+                // System Health Modal
+                const healthToggle = document.getElementById("health-modal-toggle");
+                if (healthToggle) { healthToggle.addEventListener("click", openHealthModal); }
+                const healthCloseBtn = document.getElementById("health-close-btn");
+                if (healthCloseBtn) { healthCloseBtn.addEventListener("click", closeHealthModal); }
+                const healthDoneBtn = document.getElementById("health-done-btn");
+                if (healthDoneBtn) { healthDoneBtn.addEventListener("click", closeHealthModal); }
+                const healthRefreshBtn = document.getElementById("health-refresh-btn");
+                if (healthRefreshBtn) { healthRefreshBtn.addEventListener("click", loadSystemHealth); }
+                const healthRerunBtn = document.getElementById("health-rerun-wizard-btn");
+                if (healthRerunBtn) {
+                    healthRerunBtn.addEventListener("click", function () {
+                        closeHealthModal();
+                        openOnboardingModal();
+                    });
+                }
+
+                // Onboarding Wizard Listeners
+                const optGoalStd = document.getElementById("opt-goal-standard");
+                if (optGoalStd) { optGoalStd.addEventListener("click", function () { selectWizardGoal("standard"); }); }
+                const optGoalSingle = document.getElementById("opt-goal-single");
+                if (optGoalSingle) { optGoalSingle.addEventListener("click", function () { selectWizardGoal("single-label"); }); }
+
+                const optProfStd = document.getElementById("opt-profile-standard");
+                if (optProfStd) { optProfStd.addEventListener("click", function () { selectWizardProfile("standard"); }); }
+                const optProfLight = document.getElementById("opt-profile-lightweight");
+                if (optProfLight) { optProfLight.addEventListener("click", function () { selectWizardProfile("lightweight"); }); }
+
+                const step1Next = document.getElementById("wizard-step-1-next");
+                if (step1Next) { step1Next.addEventListener("click", function () { goToWizardStep(2); }); }
+                const step2Back = document.getElementById("wizard-step-2-back");
+                if (step2Back) { step2Back.addEventListener("click", function () { goToWizardStep(1); }); }
+                const step2Next = document.getElementById("wizard-step-2-next");
+                if (step2Next) { step2Next.addEventListener("click", function () { goToWizardStep(3); }); }
+                const step3Back = document.getElementById("wizard-step-3-back");
+                if (step3Back) { step3Back.addEventListener("click", function () { goToWizardStep(2); }); }
+
+                const finishBtn = document.getElementById("wizard-finish-btn");
+                if (finishBtn) { finishBtn.addEventListener("click", finishWizard); }
+                const skipBtn = document.getElementById("wizard-skip-btn");
+                if (skipBtn) { skipBtn.addEventListener("click", skipWizard); }
+                const skipLink = document.getElementById("wizard-skip-link");
+                if (skipLink) { skipLink.addEventListener("click", skipWizard); }
+
+                // Close modals on overlay background click
+                const onbModal = document.getElementById("onboarding-modal");
+                if (onbModal) {
+                    onbModal.addEventListener("click", function (e) {
+                        if (e.target === onbModal) { skipWizard(); }
+                    });
+                }
+                const hlthModal = document.getElementById("health-modal");
+                if (hlthModal) {
+                    hlthModal.addEventListener("click", function (e) {
+                        if (e.target === hlthModal) { closeHealthModal(); }
+                    });
+                }
+
+                // Close modals on Escape key
+                document.addEventListener("keydown", function (e) {
+                    if (e.key === "Escape") {
+                        closeHealthModal();
+                    }
+                });
 
                 checkAiStatus();
                 loadStatus();
+                checkOnboarding();
                 loadLabels().then(function () { loadReview(); loadConflicts(); });
                 setInterval(function () {
                     if (!state.downloadingModel) {
