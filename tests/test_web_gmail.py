@@ -4,7 +4,6 @@ import io
 import json
 import stat
 import tempfile
-import threading
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -12,7 +11,6 @@ from unittest.mock import MagicMock, patch
 from Mailroom import app as app_module
 from Mailroom.config import Config
 from Mailroom.db import DB
-from Mailroom.gmail import GmailError
 
 
 class TestWebGmail(unittest.TestCase):
@@ -262,6 +260,12 @@ class TestWebGmail(unittest.TestCase):
             self.assertIsNotNone(msg)
             self.assertEqual(msg["subject"], "Invoice June")
             self.assertEqual(msg["gmail_message_id"], "gm-101")
+
+            # Check scan metadata order
+            acc = db.get_account("scanner@gmail.com")
+            self.assertIsNotNone(acc)
+            self.assertEqual(acc["last_query"], self.config.scan_query)
+            self.assertEqual(acc["last_sync"], "2026-06-01T12:00:00")
         finally:
             db.close()
 
@@ -356,6 +360,53 @@ class TestWebGmail(unittest.TestCase):
             self.assertEqual(snaps[0]["label_ids"], ["Type/Receipt"])
         finally:
             db.close()
+
+    @patch("Mailroom.gmail.modify_message_labels")
+    @patch("Mailroom.gmail.ensure_label")
+    @patch("Mailroom.gmail.list_user_labels")
+    @patch("Mailroom.gmail.get_gmail_service")
+    def test_gmail_apply_execution_with_removal(self, mock_get_svc, mock_list_labels, mock_ensure, mock_modify):
+        mock_svc = MagicMock()
+        mock_get_svc.return_value = (mock_svc, "user@gmail.com")
+        mock_list_labels.return_value = {"Type/Receipt": "Label_Receipt_123"}
+        mock_ensure.side_effect = lambda svc, name, m: "Label_News_456" if name == "Type/Newsletter" else "Label_Receipt_123"
+
+        db = DB(self.config.database_path, allowed_labels=self.config.get_label_ids())
+        try:
+            account_id = db.get_or_create_account("user@gmail.com", is_local=False)
+            msg_id = db.upsert_message(account_id, {
+                "gmail_message_id": "gm-302",
+                "thread_id": "th-302",
+                "subject": "Changed Decision",
+                "sender": "Service",
+                "sender_email": "service@example.com",
+                "received_at": "2026-06-01T12:00:00",
+                "body_preview": "Update",
+                "gmail_labels": [],
+                "truncated": False,
+                "unsupported_content": False,
+                "has_attachments": False,
+            })
+            # Previously applied Type/Receipt
+            db.record_applied_labels(account_id, msg_id, ["Type/Receipt"])
+            # Now decision changed to Type/Newsletter (Type/Receipt must be removed!)
+            db.save_decision(account_id, msg_id, "corrected", ["Type/Newsletter"])
+        finally:
+            db.close()
+
+        res = self.client.post("/api/gmail/apply", headers=self.headers())
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["applied"], 1)
+
+        # Verify modify_message_labels called with BOTH addition and removal
+        mock_modify.assert_called_once_with(
+            mock_svc,
+            "gm-302",
+            add_label_ids=["Label_News_456"],
+            remove_label_ids=["Label_Receipt_123"],
+        )
 
     def test_gmail_apply_empty_plan(self):
         res = self.client.post("/api/gmail/apply", headers=self.headers())

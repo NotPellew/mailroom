@@ -1518,6 +1518,7 @@ def _compute_apply_plan(config):
         remove = [lid for lid in previous_valid if lid not in desired]
         if add or remove:
             needed_labels.update(desired)
+            needed_labels.update(remove)
             planned.append({
                 "message_id": target["message_id"],
                 "gmail_message_id": target["gmail_message_id"],
@@ -1726,7 +1727,11 @@ def api_gmail_scan():
             skip_ids=skip_ids,
             on_message=on_msg,
         )
-        db_obj.record_scan_metadata(account_id, sample_time, config.scan_query)
+        db_obj.record_scan_metadata(
+            account_id=account_id,
+            query=config.scan_query,
+            sample_time=sample_time,
+        )
     finally:
         db_obj.close()
 
@@ -1787,7 +1792,8 @@ def api_gmail_apply():
         return jsonify({"error": str(e)}), 400
 
     label_map = list_user_labels(service)
-    label_ids = {name: ensure_label(service, name, label_map) for name in sorted(needed)}
+    add_label_names = {lbl for item in planned for lbl in item["labels_to_add"]}
+    label_ids = {name: ensure_label(service, name, label_map) for name in sorted(add_label_names)}
 
     db_obj = DB(config.database_path)
     applied = failed = 0
@@ -1795,7 +1801,7 @@ def api_gmail_apply():
         for item in planned:
             gmail_id = item["gmail_message_id"]
             add_ids = [label_ids[n] for n in item["labels_to_add"] if n in label_ids]
-            remove_ids = [label_ids[n] for n in item["labels_to_remove"] if n in label_ids]
+            remove_ids = [label_map[n] for n in item["labels_to_remove"] if n in label_map]
             try:
                 modify_message_labels(
                     service,
