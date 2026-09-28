@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import sqlite3
+import threading
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1487,5 +1488,394 @@ def api_config_setup():
         "taxonomy": taxonomy,
         "labels_count": len(labels),
     })
+
+
+# --- Guided In-App Gmail Connection & Label Sync ---
+
+_GMAIL_AUTH_LOCK = threading.Lock()
+
+
+def _compute_apply_plan(config):
+    """Compute planned label additions and removals for Gmail messages."""
+    from Mailroom.db import DB
+
+    db_obj = DB(config.database_path)
+    try:
+        targets = db_obj.list_gmail_apply_targets()
+        snapshots = {row["message_id"]: row["label_ids"] for row in db_obj.list_applied_labels()}
+    finally:
+        db_obj.close()
+
+    known = {lab["id"] for lab in config.labels}
+    planned = []
+    needed_labels = set()
+
+    for target in targets:
+        desired = [lid for lid in target["label_ids"] if lid in known]
+        previous = snapshots.get(target["message_id"]) or []
+        previous_valid = [lid for lid in previous if lid in known]
+        add = [lid for lid in desired if lid not in previous_valid]
+        remove = [lid for lid in previous_valid if lid not in desired]
+        if add or remove:
+            needed_labels.update(desired)
+            needed_labels.update(remove)
+            planned.append({
+                "message_id": target["message_id"],
+                "gmail_message_id": target["gmail_message_id"],
+                "subject": target.get("subject") or "(no subject)",
+                "sender": target.get("sender") or "",
+                "account_id": target["account_id"],
+                "desired": desired,
+                "labels_to_add": add,
+                "labels_to_remove": remove,
+            })
+
+    return planned, sorted(needed_labels)
+
+
+@bp.route("/api/gmail/status")
+def api_gmail_status():
+    """Report Gmail dependency, credentials, and connection status."""
+    config = _get_config()
+    from Mailroom.gmail import (
+        check_gmail_dependencies,
+        _load_client_secrets,
+        _read_last_email,
+        _load_credentials,
+        GMAIL_MODIFY_SCOPE,
+    )
+
+    deps_ok, _ = check_gmail_dependencies()
+    has_secrets = _load_client_secrets(config.config_dir) is not None
+    stored_email = None
+    has_creds = False
+
+    if deps_ok:
+        try:
+            stored_email = _read_last_email(config)
+            if stored_email:
+                creds_dict = _load_credentials(stored_email)
+                if creds_dict:
+                    scopes = creds_dict.get("scopes") or []
+                    if isinstance(scopes, str):
+                        scopes = scopes.split()
+                    if GMAIL_MODIFY_SCOPE in scopes:
+                        has_creds = True
+        except Exception:
+            stored_email = None
+            has_creds = False
+
+    connected = bool(stored_email and has_creds)
+    return jsonify({
+        "dependencies_installed": deps_ok,
+        "credentials_uploaded": has_secrets,
+        "connected": connected,
+        "account": stored_email if connected else None,
+        "mode": "gmail" if connected else "local",
+    })
+
+
+@bp.route("/api/gmail/credentials", methods=["POST"])
+def api_gmail_credentials():
+    """Upload Google Cloud OAuth client credentials (credentials.json)."""
+    config = _get_config()
+
+    # Limit payload size to 256 KB
+    if request.content_length and request.content_length > 256 * 1024:
+        return jsonify({"error": "File exceeds maximum size of 256 KB"}), 400
+
+    raw_data = None
+    if "file" in request.files:
+        upload = request.files["file"]
+        content = upload.read()
+        if len(content) > 256 * 1024:
+            return jsonify({"error": "File exceeds maximum size of 256 KB"}), 400
+        try:
+            raw_data = json.loads(content.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            return jsonify({"error": f"Invalid JSON in credentials file: {e}"}), 400
+    else:
+        raw_data = request.get_json(silent=True)
+
+    if not isinstance(raw_data, dict):
+        return jsonify({"error": "Credentials must be a JSON object"}), 400
+
+    if "web" in raw_data and "installed" not in raw_data:
+        return jsonify({
+            "error": "OAuth credentials must be created as a 'Desktop app' in Google Cloud Console, not 'Web application'."
+        }), 400
+
+    if "installed" not in raw_data or not isinstance(raw_data["installed"], dict):
+        return jsonify({
+            "error": "Credentials JSON missing 'installed' desktop client block."
+        }), 400
+
+    installed = raw_data["installed"]
+    client_id = installed.get("client_id")
+    client_secret = installed.get("client_secret")
+    if not isinstance(client_id, str) or not client_id.strip():
+        return jsonify({"error": "Missing or invalid client_id in credentials"}), 400
+    if not isinstance(client_secret, str) or not client_secret.strip():
+        return jsonify({"error": "Missing or invalid client_secret in credentials"}), 400
+
+    target_path = Path(config.config_dir) / "credentials.json"
+    try:
+        config.config_dir.mkdir(parents=True, exist_ok=True)
+        with open(target_path, "w", encoding="utf-8") as f:
+            json.dump(raw_data, f, indent=2)
+        target_path.chmod(0o600)
+    except Exception as e:
+        return jsonify({"error": f"Failed to save credentials: {e}"}), 500
+
+    safe_id = client_id.split("-")[0] + "...apps.googleusercontent.com"
+    return jsonify({"status": "success", "client_id": safe_id})
+
+
+@bp.route("/api/gmail/auth", methods=["POST"])
+def api_gmail_auth():
+    """Trigger Google OAuth authorization flow in local browser."""
+    config = _get_config()
+
+    if not _GMAIL_AUTH_LOCK.acquire(blocking=False):
+        return jsonify({"error": "Authentication is already in progress in your browser."}), 409
+
+    try:
+        from Mailroom.gmail import (
+            check_gmail_dependencies,
+            _load_client_secrets,
+            authenticate,
+            GmailError,
+        )
+
+        deps_ok, missing = check_gmail_dependencies()
+        if not deps_ok:
+            return jsonify({
+                "error": f"Gmail dependencies not installed: {', '.join(missing)}"
+            }), 400
+
+        if not _load_client_secrets(config.config_dir):
+            return jsonify({
+                "error": "Desktop OAuth credentials not uploaded yet. Upload credentials.json first."
+            }), 400
+
+        try:
+            email = authenticate(config, reauth=True)
+            return jsonify({"status": "success", "account": email})
+        except GmailError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            return jsonify({"error": f"Authentication failed: {e}"}), 500
+    finally:
+        _GMAIL_AUTH_LOCK.release()
+
+
+@bp.route("/api/gmail/disconnect", methods=["POST"])
+def api_gmail_disconnect():
+    """Disconnect Gmail account, clearing keyring and marker."""
+    config = _get_config()
+    from Mailroom.gmail import _read_last_email, clear_stored_auth, _last_email_path
+
+    try:
+        email = _read_last_email(config)
+        if email:
+            clear_stored_auth(email)
+        _last_email_path(config).unlink(missing_ok=True)
+    except Exception as e:
+        logger.warning("Error during Gmail disconnect: %s", e)
+
+    return jsonify({"status": "success", "connected": False})
+
+
+@bp.route("/api/gmail/scan", methods=["POST"])
+def api_gmail_scan():
+    """Fetch recent messages safely from Gmail and upsert into database."""
+    config = _get_config()
+    from Mailroom.gmail import get_gmail_service, fetch_bounded_sample, GmailError
+    from Mailroom.db import DB
+
+    data = request.get_json(silent=True) or {}
+    try:
+        limit = int(data.get("limit", 20))
+    except (TypeError, ValueError):
+        limit = 20
+    limit = max(1, min(limit, 100))
+
+    try:
+        service, email = get_gmail_service(config)
+    except GmailError as e:
+        return jsonify({"error": str(e)}), 400
+
+    db_obj = DB(config.database_path)
+    new_count = 0
+    try:
+        account_id = db_obj.get_or_create_account(
+            email=email,
+            name=email,
+            is_local=False,
+        )
+        skip_ids = set(db_obj.list_cached_gmail_ids(account_id))
+
+        def on_msg(decoded):
+            nonlocal new_count
+            db_obj.upsert_message(account_id, decoded)
+            new_count += 1
+
+        _, sample_time = fetch_bounded_sample(
+            service,
+            query=config.scan_query,
+            limit=limit,
+            skip_ids=skip_ids,
+            on_message=on_msg,
+        )
+        db_obj.record_scan_metadata(
+            account_id=account_id,
+            query=config.scan_query,
+            sample_time=sample_time,
+        )
+    finally:
+        db_obj.close()
+
+    return jsonify({
+        "status": "success",
+        "fetched": limit,
+        "new": new_count,
+        "account": email,
+    })
+
+
+@bp.route("/api/gmail/apply/preview")
+def api_gmail_apply_preview():
+    """Return explicit preview of pending Gmail label changes."""
+    config = _get_config()
+    planned, needed = _compute_apply_plan(config)
+
+    items = [
+        {
+            "message_id": p["message_id"],
+            "gmail_message_id": p["gmail_message_id"],
+            "subject": p["subject"],
+            "sender": p["sender"],
+            "labels_to_add": p["labels_to_add"],
+            "labels_to_remove": p["labels_to_remove"],
+        }
+        for p in planned
+    ]
+
+    return jsonify({
+        "total_messages": len(items),
+        "distinct_labels": needed,
+        "items": items,
+        "safety_guarantee": "0 messages will be archived or deleted. Only label additions and removals will be performed.",
+    })
+
+
+@bp.route("/api/gmail/apply", methods=["POST"])
+def api_gmail_apply():
+    """Apply planned label additions and removals to Gmail."""
+    config = _get_config()
+    from Mailroom.gmail import (
+        get_gmail_service,
+        list_user_labels,
+        ensure_label,
+        modify_message_labels,
+        GmailError,
+    )
+    from Mailroom.db import DB
+
+    planned, needed = _compute_apply_plan(config)
+    if not planned:
+        return jsonify({"status": "success", "applied": 0, "failed": 0})
+
+    try:
+        service, email = get_gmail_service(config)
+    except GmailError as e:
+        return jsonify({"error": str(e)}), 400
+
+    label_map = list_user_labels(service)
+    add_label_names = {lbl for item in planned for lbl in item["labels_to_add"]}
+    label_ids = {name: ensure_label(service, name, label_map) for name in sorted(add_label_names)}
+
+    db_obj = DB(config.database_path)
+    applied = failed = 0
+    try:
+        for item in planned:
+            gmail_id = item["gmail_message_id"]
+            add_ids = [label_ids[n] for n in item["labels_to_add"] if n in label_ids]
+            remove_ids = [label_map[n] for n in item["labels_to_remove"] if n in label_map]
+            try:
+                modify_message_labels(
+                    service,
+                    gmail_id,
+                    add_label_ids=add_ids,
+                    remove_label_ids=remove_ids,
+                )
+                db_obj.record_applied_labels(item["account_id"], item["message_id"], item["desired"])
+                applied += 1
+            except GmailError as e:
+                failed += 1
+                logger.warning("Failed to modify Gmail message %s: %s", gmail_id, e)
+    finally:
+        db_obj.close()
+
+    return jsonify({
+        "status": "success",
+        "applied": applied,
+        "failed": failed,
+    })
+
+
+@bp.route("/api/gmail/sync-labels", methods=["POST"])
+def api_gmail_sync_labels():
+    """Read Gmail labels back for applied mail; record user edits as decisions."""
+    config = _get_config()
+    from Mailroom.gmail import (
+        get_gmail_service,
+        list_user_labels,
+        fetch_message_label_ids,
+        GmailError,
+    )
+    from Mailroom.db import DB
+
+    try:
+        service, email = get_gmail_service(config)
+    except GmailError as e:
+        return jsonify({"error": str(e)}), 400
+
+    label_map = list_user_labels(service)
+    id_to_name = {lid: name for name, lid in label_map.items()}
+    known = {lab["id"] for lab in config.labels}
+
+    db_obj = DB(config.database_path, allowed_labels=config.get_label_ids())
+    unchanged = corrected = errors = 0
+    try:
+        for snap in db_obj.list_applied_labels():
+            gmail_id = snap["gmail_message_id"]
+            previous = snap["label_ids"]
+            try:
+                current_ids = fetch_message_label_ids(service, gmail_id)
+            except GmailError:
+                errors += 1
+                continue
+            current = [
+                id_to_name[lid]
+                for lid in current_ids
+                if lid in id_to_name and id_to_name[lid] in known
+            ]
+            if sorted(current) == sorted(previous):
+                unchanged += 1
+                continue
+            db_obj.save_decision(snap["account_id"], snap["message_id"], "corrected", current)
+            db_obj.record_applied_labels(snap["account_id"], snap["message_id"], current)
+            corrected += 1
+    finally:
+        db_obj.close()
+
+    return jsonify({
+        "status": "success",
+        "unchanged": unchanged,
+        "corrected": corrected,
+        "errors": errors,
+    })
+
 
 
