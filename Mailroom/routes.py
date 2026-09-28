@@ -69,6 +69,7 @@ def get_status(db_path: str) -> Dict[str, Any]:
         "proposals_pending": 0,
         "decisions_pending": 0,
         "reviewed": 0,
+        "unclassified": 0,
         "db_initialized": False,
     }
 
@@ -127,6 +128,19 @@ def get_status(db_path: str) -> Dict[str, Any]:
             )
             reviewed_count = cursor.fetchone()["count"]
 
+            # Messages that have body text and no proposal yet (unclassified)
+            cursor.execute(
+                """
+                SELECT COUNT(*) as count
+                FROM messages m
+                WHERE m.body_preview IS NOT NULL AND m.body_preview != ''
+                  AND NOT EXISTS (
+                      SELECT 1 FROM proposals p WHERE p.message_id = m.id
+                  )
+                """
+            )
+            unclassified_count = cursor.fetchone()["count"]
+
             return {
                 "accounts": account_count,
                 "gmail_accounts": gmail_account_count,
@@ -136,6 +150,7 @@ def get_status(db_path: str) -> Dict[str, Any]:
                 "proposals_pending": pending_count,
                 "decisions_pending": pending_decisions,
                 "reviewed": reviewed_count,
+                "unclassified": unclassified_count,
                 "db_initialized": True,
             }
         finally:
@@ -490,6 +505,53 @@ def _classify_direct_payload(config, data):
         return jsonify({"error": str(e)}), 500
 
     return jsonify(proposal_payload(proposal, config.labels))
+
+
+@bp.route("/api/classify/pending", methods=["GET"])
+def api_classify_pending():
+    """API endpoint to list cached messages pending classification."""
+    config = _get_config()
+    limit_arg = request.args.get("limit", "1000")
+    try:
+        limit = int(limit_arg)
+    except (ValueError, TypeError):
+        limit = 1000
+    limit = max(1, min(limit, 1000))
+
+    from Mailroom.db import DB
+
+    db_obj = DB(config.database_path)
+    try:
+        targets = db_obj.list_messages_pending_classification(limit)
+        cursor = db_obj.conn.cursor()
+        cursor.execute(
+            """
+            SELECT COUNT(*) as count
+            FROM messages m
+            WHERE m.body_preview IS NOT NULL AND m.body_preview != ''
+              AND NOT EXISTS (
+                  SELECT 1 FROM proposals p WHERE p.message_id = m.id
+              )
+            """
+        )
+        total_pending = cursor.fetchone()["count"]
+
+        pending_items = [
+            {
+                "id": t["id"],
+                "account_id": t["account_id"],
+                "subject": t.get("subject") or "",
+            }
+            for t in targets
+        ]
+
+        return jsonify({
+            "total": total_pending,
+            "count": len(pending_items),
+            "pending": pending_items,
+        })
+    finally:
+        db_obj.close()
 
 
 @bp.route("/api/classify", methods=["POST"])
