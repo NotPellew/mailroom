@@ -130,6 +130,30 @@
         .label-card .label-meta { font-size: 0.8rem; color: #6c757d; word-break: break-word; }
         .label-form .field { margin-bottom: 0.5rem; }
         textarea { padding: 0.4rem 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; font-family: inherit; width: 100%; }
+        .dropzone {
+            border: 2px dashed #0f3460;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            background: #fbfcfd;
+            transition: background-color 0.2s, border-color 0.2s;
+            cursor: pointer;
+        }
+        .dropzone.dragover {
+            background: #eaf1fb;
+            border-color: #1a1a2e;
+        }
+        .dropzone-text {
+            font-size: 1rem;
+            color: #495057;
+            margin-bottom: 1rem;
+        }
+        .dropzone-actions {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
     </style>
 </head>
 <body>
@@ -142,6 +166,7 @@
         <a href="/health" target="_blank" rel="noopener noreferrer">Health</a>
         <a href="/api/labels" target="_blank" rel="noopener noreferrer">Labels</a>
         <a href="/api/status" target="_blank" rel="noopener noreferrer">Status</a>
+        <button id="import-toggle" class="nav-toggle" type="button">Import mail</button>
         <button id="labels-toggle" class="nav-toggle" type="button">Manage labels</button>
         <span class="counts" id="nav-counts"></span>
     </nav>
@@ -155,6 +180,20 @@
                 <div class="status-item"><div class="value" id="status-messages">-</div><div class="label">Messages</div></div>
                 <div class="status-item"><div class="value" id="status-proposals">-</div><div class="label">Awaiting Review</div></div>
                 <div class="status-item"><div class="value" id="status-decisions">-</div><div class="label">Saved Choices</div></div>
+            </div>
+        </div>
+
+        <div class="container" id="import-panel" hidden>
+            <h3>Import Emails (.eml or .zip)</h3>
+            <div id="dropzone" class="dropzone" style="margin-top: 0.75rem;">
+                <p class="dropzone-text">Drag &amp; drop <strong>.eml</strong> files, a folder of emails, or a <strong>.zip</strong> archive here</p>
+                <div class="dropzone-actions">
+                    <button type="button" id="browse-files-btn" class="secondary">Browse Files</button>
+                    <button type="button" id="browse-folder-btn" class="secondary">Browse Folder</button>
+                    <input type="file" id="import-file-input" multiple accept=".eml,.zip" style="display: none;">
+                    <input type="file" id="import-folder-input" webkitdirectory directory multiple style="display: none;">
+                </div>
+                <div id="import-status" class="toast" style="display: none; margin-top: 1rem;"></div>
             </div>
         </div>
 
@@ -300,7 +339,7 @@
                 opts.headers = Object.assign({ "Accept": "application/json" }, opts.headers || {});
                 if (opts.method && opts.method !== "GET") {
                     opts.headers["X-CSRF-Token"] = csrfToken;
-                    if (opts.body && typeof opts.body !== "string") {
+                    if (opts.body && typeof opts.body !== "string" && !(opts.body instanceof FormData)) {
                         opts.headers["Content-Type"] = "application/json";
                         opts.body = JSON.stringify(opts.body);
                     }
@@ -329,6 +368,11 @@
                     document.getElementById("status-decisions").textContent = data.reviewed || 0;
                     document.getElementById("nav-counts").textContent =
                         (data.messages || 0) + " messages · " + (data.proposals_pending || 0) + " awaiting review";
+
+                    if (data.messages === 0) {
+                        const importPanel = document.getElementById("import-panel");
+                        if (importPanel && importPanel.hidden) { importPanel.hidden = false; }
+                    }
 
                     const banner = document.getElementById("mode-banner");
                     if (data.mode === "gmail") {
@@ -880,6 +924,100 @@
                 window.location.href = exportUrl(format);
             }
 
+            async function extractFilesFromDataTransfer(dataTransfer) {
+                const files = [];
+                if (dataTransfer.items && dataTransfer.items.length > 0) {
+                    const queue = [];
+                    for (let i = 0; i < dataTransfer.items.length; i++) {
+                        const item = dataTransfer.items[i];
+                        if (item.webkitGetAsEntry) {
+                            const entry = item.webkitGetAsEntry();
+                            if (entry) { queue.push(entry); }
+                        } else if (item.kind === "file") {
+                            const f = item.getAsFile();
+                            if (f) { files.push(f); }
+                        }
+                    }
+
+                    async function readEntry(entry) {
+                        if (!entry) { return; }
+                        if (entry.isFile) {
+                            await new Promise(function (resolve) {
+                                entry.file(function (file) {
+                                    files.push(file);
+                                    resolve();
+                                }, function () { resolve(); });
+                            });
+                        } else if (entry.isDirectory) {
+                            const dirReader = entry.createReader();
+                            await new Promise(function (resolve) {
+                                function readBatch() {
+                                    dirReader.readEntries(async function (entries) {
+                                        if (!entries || entries.length === 0) {
+                                            resolve();
+                                        } else {
+                                            for (let i = 0; i < entries.length; i++) {
+                                                await readEntry(entries[i]);
+                                            }
+                                            readBatch();
+                                        }
+                                    }, function () { resolve(); });
+                                }
+                                readBatch();
+                            });
+                        }
+                    }
+
+                    for (let i = 0; i < queue.length; i++) {
+                        await readEntry(queue[i]);
+                    }
+                } else if (dataTransfer.files) {
+                    for (let i = 0; i < dataTransfer.files.length; i++) {
+                        files.push(dataTransfer.files[i]);
+                    }
+                }
+                return files;
+            }
+
+            async function uploadFiles(filesList) {
+                if (!filesList || filesList.length === 0) { return; }
+                const statusEl = document.getElementById("import-status");
+                statusEl.style.display = "block";
+                statusEl.className = "toast muted";
+                statusEl.textContent = "Uploading " + filesList.length + " file(s)...";
+
+                const formData = new FormData();
+                for (let i = 0; i < filesList.length; i++) {
+                    formData.append("files", filesList[i]);
+                }
+
+                try {
+                    const res = await api("/api/ingest", {
+                        method: "POST",
+                        body: formData,
+                    });
+                    statusEl.className = "toast ok";
+                    let msg = "Import complete: " + res.ingested + " new email(s) added";
+                    if (res.duplicates_or_existing > 0) {
+                        msg += " (" + res.duplicates_or_existing + " skipped/updated)";
+                    }
+                    if (res.failed > 0) {
+                        msg += ", " + res.failed + " failed";
+                    }
+                    statusEl.textContent = msg;
+
+                    const filterState = document.getElementById("filter-state");
+                    if (filterState && filterState.value === "scored") {
+                        filterState.value = "all";
+                    }
+
+                    await Promise.all([loadStatus(), loadReview()]);
+                } catch (err) {
+                    statusEl.className = "toast err";
+                    statusEl.textContent = "Import failed: " + err.message;
+                }
+            }
+
             function init() {
                 document.getElementById("refresh-btn").addEventListener("click", function () { loadReview(); loadStatus(); });
                 document.getElementById("filter-status").addEventListener("change", resetAndLoad);
@@ -896,6 +1034,49 @@
                 });
                 document.getElementById("export-csv").addEventListener("click", function () { exportChoices("csv"); });
                 document.getElementById("export-json").addEventListener("click", function () { exportChoices("json"); });
+                document.getElementById("import-toggle").addEventListener("click", function () {
+                    const panel = document.getElementById("import-panel");
+                    panel.hidden = !panel.hidden;
+                });
+                document.getElementById("browse-files-btn").addEventListener("click", function () {
+                    document.getElementById("import-file-input").click();
+                });
+                document.getElementById("browse-folder-btn").addEventListener("click", function () {
+                    document.getElementById("import-folder-input").click();
+                });
+                document.getElementById("import-file-input").addEventListener("change", function () {
+                    uploadFiles(Array.from(this.files));
+                    this.value = "";
+                });
+                document.getElementById("import-folder-input").addEventListener("change", function () {
+                    uploadFiles(Array.from(this.files));
+                    this.value = "";
+                });
+
+                const dropzone = document.getElementById("dropzone");
+                if (dropzone) {
+                    ["dragenter", "dragover"].forEach(function (evtName) {
+                        dropzone.addEventListener(evtName, function (e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            dropzone.classList.add("dragover");
+                        });
+                    });
+                    ["dragleave", "dragend"].forEach(function (evtName) {
+                        dropzone.addEventListener(evtName, function (e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            dropzone.classList.remove("dragover");
+                        });
+                    });
+                    dropzone.addEventListener("drop", function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dropzone.classList.remove("dragover");
+                        extractFilesFromDataTransfer(e.dataTransfer).then(uploadFiles);
+                    });
+                }
+
                 document.getElementById("labels-toggle").addEventListener("click", function () {
                     const panel = document.getElementById("labels-panel");
                     panel.hidden = !panel.hidden;

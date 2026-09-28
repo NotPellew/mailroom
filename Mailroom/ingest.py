@@ -150,6 +150,24 @@ def find_eml_files(path: Union[str, Path], recursive: bool = True) -> List[Path]
     return sorted(files, key=lambda p: str(p).lower())
 
 
+def ingest_eml_bytes(
+    db_obj: DB,
+    raw_bytes: bytes,
+    account_id: str = "local",
+    source: str = "local",
+) -> tuple[str, bool]:
+    """Ingest raw .eml bytes into database.
+
+    Returns a tuple of (local_message_id, is_new) where is_new is True if
+    the message did not previously exist in the database.
+    """
+    decoded = parse_eml_bytes(raw_bytes, source=source)
+    local_id = f"{account_id}:local:{decoded['message_id']}"
+    is_new = db_obj.get_message(local_id) is None
+    msg_id = db_obj.upsert_message(account_id, decoded)
+    return msg_id, is_new
+
+
 def ingest_path(
     db_obj: DB,
     path: Union[str, Path],
@@ -180,8 +198,7 @@ def ingest_path(
     for file_path in files:
         try:
             raw_bytes = file_path.read_bytes()
-            decoded = parse_eml_bytes(raw_bytes, source=source)
-            msg_id = db_obj.upsert_message(acc_id, decoded)
+            msg_id, is_new = ingest_eml_bytes(db_obj, raw_bytes, account_id=acc_id, source=source)
             result.message_ids.append(msg_id)
             result.ingested += 1
         except Exception as e:
