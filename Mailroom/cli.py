@@ -1,11 +1,16 @@
-"""Command-line interface for Mailroom."""
-
+import os
 import sys
 import json
 import logging
 import queue
 import threading
 from pathlib import Path
+
+# PyInstaller noconsole on Windows initializes sys.stdout and sys.stderr to None.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +29,7 @@ def create_cli_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Local-first workflow (no Gmail account needed):
+  app             Launch the standalone desktop application (default when double-clicked)
   setup           Interactive onboarding wizard for first-time configuration
   create-config   Create the configuration file
   init-db         Initialize the database
@@ -77,6 +83,14 @@ Optional Gmail sync (needs OAuth credentials and the [gmail] extra):
         action="store_true",
         help="Exit with non-zero status if optional dependencies or backend are not ready",
     )
+
+    # app (desktop mode)
+    app_parser = subparsers.add_parser(
+        "app", help="Launch Mailroom desktop application (browser dashboard & companion launcher)"
+    )
+    app_parser.add_argument("--host", default="127.0.0.1", help="Loopback host to bind to (default: 127.0.0.1)")
+    app_parser.add_argument("--port", type=int, default=None, help="Port to bind to (default: auto-select starting at 5000)")
+    app_parser.add_argument("--no-browser", action="store_true", help="Do not open the default web browser automatically")
 
     # review
     review = subparsers.add_parser("review", help="Start the review server")
@@ -504,6 +518,19 @@ def clear_cache(args, config):
     except Exception as e:
         print(f"Error clearing cache: {e}", file=sys.stderr)
         return 1
+
+
+def app_cmd(args, config):
+    """Launch the standalone desktop application."""
+    from Mailroom.desktop import DesktopApp
+
+    desktop = DesktopApp(
+        config=config,
+        host=getattr(args, "host", "127.0.0.1"),
+        port=getattr(args, "port", None),
+        open_browser=not getattr(args, "no_browser", False),
+    )
+    return desktop.run()
 
 
 def run_server(args, config):
@@ -2147,10 +2174,15 @@ def sync_labels_cmd(args, config):
     return 0
 
 
-def main():
+def main(argv=None):
     """Main entry point."""
     parser = create_cli_parser()
-    args = parser.parse_args()
+    args_list = sys.argv[1:] if argv is None else argv
+
+    if not args_list:
+        args = parser.parse_args(["app"])
+    else:
+        args = parser.parse_args(args_list)
 
     if not args.command:
         parser.print_help()
@@ -2177,6 +2209,7 @@ def main():
 
     # Execute command
     commands = {
+        "app": app_cmd,
         "doctor": doctor_cmd,
         "auth": auth_cmd,
         "scan": scan_cmd,
