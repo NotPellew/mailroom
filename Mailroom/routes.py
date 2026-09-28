@@ -1,7 +1,9 @@
 """Flask routes for Mailroom review page."""
 
 import io
+import json
 import logging
+import re
 import sqlite3
 import zipfile
 from datetime import datetime, timezone
@@ -1154,6 +1156,159 @@ def api_export():
         mimetype="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="mailroom-decisions-{today_str}.csv"'
+        },
+    )
+
+
+_SAFE_MODEL_RE = re.compile(
+    r"^[a-zA-Z0-9_]+([.-][a-zA-Z0-9_]+)*(/[a-zA-Z0-9_]+([.-][a-zA-Z0-9_]+)*)*(:[a-zA-Z0-9_]+([.-][a-zA-Z0-9_]+)*)?$"
+)
+
+
+@bp.route("/api/ollama/status")
+def api_ollama_status():
+    """Check status of local AI backend and model availability."""
+    config = _get_config()
+    provider = config.model_provider
+    endpoint = config.model_endpoint
+    model_id = config.model_id
+
+    if not is_loopback_url(endpoint):
+        return jsonify({"error": "Model endpoint is not a loopback URL"}), 400
+
+    from Mailroom.classification import detect_provider, is_model_installed, ollama_base, probe_model_endpoint
+    import requests
+
+    eff_provider = detect_provider(endpoint, explicit_provider=provider)
+
+    # If provider is not ollama (e.g. tabby or openai):
+    if eff_provider in ("tabby", "openai"):
+        try:
+            probe_model_endpoint(endpoint, provider=eff_provider, timeout=3.0)
+            return jsonify({
+                "provider": eff_provider,
+                "running": True,
+                "model_installed": True,
+                "ready": True,
+                "endpoint": endpoint,
+                "model": model_id,
+            })
+        except Exception as e:
+            return jsonify({
+                "provider": eff_provider,
+                "running": False,
+                "model_installed": False,
+                "ready": False,
+                "endpoint": endpoint,
+                "model": model_id,
+                "error": str(e),
+            })
+
+    base = ollama_base(endpoint)
+    session = requests.Session()
+    session.trust_env = False
+    session.proxies = {"http": None, "https": None}
+
+    try:
+        resp = session.get(f"{base}/api/tags", timeout=3.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            models = data.get("models") or []
+            available = [
+                str(m.get("name") or m.get("model"))
+                for m in models
+                if isinstance(m, dict) and (m.get("name") or m.get("model"))
+            ]
+            installed = is_model_installed(model_id, available)
+            return jsonify({
+                "provider": "ollama",
+                "running": True,
+                "model_installed": installed,
+                "ready": installed,
+                "model": model_id,
+                "endpoint": endpoint,
+                "available_models": available,
+            })
+        else:
+            return jsonify({
+                "provider": "ollama",
+                "running": False,
+                "model_installed": False,
+                "ready": False,
+                "model": model_id,
+                "endpoint": endpoint,
+                "error": f"Ollama returned HTTP {resp.status_code}",
+            })
+    except Exception as e:
+        return jsonify({
+            "provider": "ollama",
+            "running": False,
+            "model_installed": False,
+            "ready": False,
+            "model": model_id,
+            "endpoint": endpoint,
+            "error": str(e),
+        })
+    finally:
+        session.close()
+
+
+@bp.route("/api/ollama/pull", methods=["POST"])
+def api_ollama_pull():
+    """Pull an Ollama model streaming SSE progress events."""
+    config = _get_config()
+    provider = config.model_provider
+    endpoint = config.model_endpoint
+    if not is_loopback_url(endpoint):
+        return jsonify({"error": "Model endpoint is not a loopback URL"}), 400
+
+    from Mailroom.classification import detect_provider, ollama_base
+    import requests
+
+    eff_provider = detect_provider(endpoint, explicit_provider=provider)
+    if eff_provider != "ollama":
+        return jsonify({"error": "Model download is only supported when using Ollama"}), 400
+
+    data = request.get_json(silent=True) or {}
+    model_name = data.get("model") or config.model_id
+    if not isinstance(model_name, str):
+        return jsonify({"error": "Invalid model parameter"}), 400
+
+    model_name = model_name.strip()
+    if not model_name or len(model_name) > 128 or ".." in model_name or not _SAFE_MODEL_RE.match(model_name):
+        return jsonify({"error": f"Invalid model name: '{model_name}'"}), 400
+
+    base = ollama_base(endpoint)
+
+    def generate():
+        session = requests.Session()
+        session.trust_env = False
+        session.proxies = {"http": None, "https": None}
+        try:
+            with session.post(
+                f"{base}/api/pull",
+                json={"name": model_name, "stream": True},
+                stream=True,
+                timeout=(5.0, None),
+            ) as resp:
+                if resp.status_code != 200:
+                    yield f"data: {json.dumps({'error': f'Ollama error HTTP {resp.status_code}'})}\n\n"
+                    return
+                for line in resp.iter_lines():
+                    if line:
+                        decoded = line.decode("utf-8", errors="replace")
+                        yield f"data: {decoded}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+        finally:
+            session.close()
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
         },
     )
 

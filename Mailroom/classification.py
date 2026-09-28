@@ -269,6 +269,14 @@ def ollama_base(endpoint: str) -> str:
     return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, path, "", "", "")).rstrip("/")
 
 
+def is_model_installed(model_id: str, available_models: List[str]) -> bool:
+    """Check if model_id is present in available Ollama models, accounting for tags."""
+    return any(
+        m == model_id or m.startswith(f"{model_id}:") or model_id.startswith(f"{m}:")
+        for m in available_models
+    )
+
+
 def _extract_completion_text(response_data: Dict[str, Any]) -> str:
     """Pull assistant text out of Tabby, llama.cpp, or OpenAI-shaped JSON."""
     if "response" in response_data:
