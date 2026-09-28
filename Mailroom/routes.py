@@ -1173,14 +1173,20 @@ def api_ollama_status():
     endpoint = config.model_endpoint
     model_id = config.model_id
 
-    # If provider is explicitly not ollama (e.g. tabby or openai):
-    if provider in ("tabby", "openai"):
-        from Mailroom.classification import probe_model_endpoint
+    if not is_loopback_url(endpoint):
+        return jsonify({"error": "Model endpoint is not a loopback URL"}), 400
 
+    from Mailroom.classification import detect_provider, is_model_installed, ollama_base, probe_model_endpoint
+    import requests
+
+    eff_provider = detect_provider(endpoint, explicit_provider=provider)
+
+    # If provider is not ollama (e.g. tabby or openai):
+    if eff_provider in ("tabby", "openai"):
         try:
-            probe_model_endpoint(endpoint, explicit_provider=provider, timeout=3.0)
+            probe_model_endpoint(endpoint, provider=eff_provider, timeout=3.0)
             return jsonify({
-                "provider": provider,
+                "provider": eff_provider,
                 "running": True,
                 "model_installed": True,
                 "ready": True,
@@ -1189,7 +1195,7 @@ def api_ollama_status():
             })
         except Exception as e:
             return jsonify({
-                "provider": provider,
+                "provider": eff_provider,
                 "running": False,
                 "model_installed": False,
                 "ready": False,
@@ -1197,12 +1203,6 @@ def api_ollama_status():
                 "model": model_id,
                 "error": str(e),
             })
-
-    from Mailroom.classification import is_model_installed, ollama_base
-    import requests
-
-    if not is_loopback_url(endpoint):
-        return jsonify({"error": "Model endpoint is not a loopback URL"}), 400
 
     base = ollama_base(endpoint)
     session = requests.Session()
@@ -1258,12 +1258,16 @@ def api_ollama_pull():
     """Pull an Ollama model streaming SSE progress events."""
     config = _get_config()
     provider = config.model_provider
-    if provider in ("tabby", "openai"):
-        return jsonify({"error": "Model download is only supported when using Ollama"}), 400
-
     endpoint = config.model_endpoint
     if not is_loopback_url(endpoint):
         return jsonify({"error": "Model endpoint is not a loopback URL"}), 400
+
+    from Mailroom.classification import detect_provider, ollama_base
+    import requests
+
+    eff_provider = detect_provider(endpoint, explicit_provider=provider)
+    if eff_provider != "ollama":
+        return jsonify({"error": "Model download is only supported when using Ollama"}), 400
 
     data = request.get_json(silent=True) or {}
     model_name = data.get("model") or config.model_id
@@ -1273,9 +1277,6 @@ def api_ollama_pull():
     model_name = model_name.strip()
     if not model_name or len(model_name) > 128 or ".." in model_name or not _SAFE_MODEL_RE.match(model_name):
         return jsonify({"error": f"Invalid model name: '{model_name}'"}), 400
-
-    from Mailroom.classification import ollama_base
-    import requests
 
     base = ollama_base(endpoint)
 

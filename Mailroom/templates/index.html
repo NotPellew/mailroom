@@ -1207,7 +1207,7 @@
                                 const now = Date.now();
                                 const timeDelta = (now - lastTime) / 1000;
                                 if (timeDelta >= 1.0) {
-                                    const bytesDelta = completed - lastBytes;
+                                    const bytesDelta = Math.max(0, completed - lastBytes);
                                     speed = bytesDelta / timeDelta;
                                     lastBytes = completed;
                                     lastTime = now;

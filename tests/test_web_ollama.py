@@ -100,7 +100,7 @@ class TestWebOllama(unittest.TestCase):
         self.assertTrue(data["model_installed"])
         self.assertTrue(data["ready"])
 
-    @patch("Mailroom.classification.probe_model_endpoint")
+    @patch("Mailroom.classification.probe_model_endpoint", autospec=True)
     def test_status_non_ollama_provider(self, mock_probe):
         mock_probe.return_value = {"status": "ready"}
 
@@ -118,6 +118,9 @@ class TestWebOllama(unittest.TestCase):
         self.assertEqual(data["provider"], "tabby")
         self.assertTrue(data["running"])
         self.assertTrue(data["ready"])
+        mock_probe.assert_called_once_with(
+            "http://127.0.0.1:8080/completion", provider="tabby", timeout=3.0
+        )
 
     def test_status_host_header_enforcement(self):
         res = self.client.get("/api/ollama/status", headers={"Host": "evil.example"})
