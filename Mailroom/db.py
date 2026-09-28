@@ -1199,6 +1199,8 @@ class DB:
                    d.status,
                    d.label_ids,
                    m.gmail_message_id,
+                   m.subject,
+                   m.sender,
                    a.email AS account_email
             FROM decisions d
             JOIN messages m ON m.id = d.message_id

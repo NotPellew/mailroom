@@ -287,6 +287,7 @@
 
     <nav>
         <button id="health-modal-toggle" class="nav-toggle" type="button">System Health</button>
+        <button id="gmail-modal-toggle" class="nav-toggle" type="button">Gmail (Optional)</button>
         <a href="/api/labels" target="_blank" rel="noopener noreferrer">Labels</a>
         <a href="/api/status" target="_blank" rel="noopener noreferrer">Status</a>
         <button id="import-toggle" class="nav-toggle" type="button">Import mail</button>
@@ -680,6 +681,9 @@
                         <p class="muted" style="font-size: 0.75rem; line-height: 1.3;">
                             Gmail integration is optional. All features run locally with imported .eml files.
                         </p>
+                        <div style="margin-top: 0.6rem;">
+                            <button type="button" id="health-gmail-manage-btn" class="secondary" style="font-size: 0.8rem; padding: 0.3rem 0.6rem;">Configure Gmail</button>
+                        </div>
                     </div>
                 </div>
 
@@ -689,6 +693,139 @@
                         <button type="button" id="health-refresh-btn" class="secondary" style="font-size: 0.85rem;">Refresh</button>
                         <button type="button" id="health-done-btn" style="font-size: 0.85rem;">Done</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Guided In-App Gmail Modal -->
+        <div id="gmail-modal" class="modal-overlay" hidden>
+            <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="gmail-modal-title" style="max-width: 720px;">
+                <div class="modal-header">
+                    <div>
+                        <h2 id="gmail-modal-title" style="font-size: 1.3rem; color: #1a1a2e;">Gmail Connection &amp; Sync</h2>
+                        <p class="muted" style="margin-top: 0.15rem;">Connect your Gmail account (optional) to scan messages and apply label suggestions.</p>
+                    </div>
+                    <button type="button" id="gmail-close-btn" class="modal-close-btn" title="Close">&times;</button>
+                </div>
+
+                <!-- Local-First Privacy Guarantee Banner -->
+                <div style="background: #eaf1fb; border: 1px solid #b6d4fe; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1.25rem;">
+                    <strong style="color: #084298; display: block; margin-bottom: 0.25rem; font-size: 0.9rem;">🔒 Local-First Privacy &amp; Safety Guarantee</strong>
+                    <p style="margin: 0; font-size: 0.82rem; color: #084298; line-height: 1.4;">
+                        Gmail integration is 100% optional. Mailroom works fully offline with local .eml files. Mailroom will <strong>never</strong> archive, delete, trash, mark as spam, or send emails. It only reads messages to suggest labels and modifies labels when you explicitly confirm.
+                    </p>
+                </div>
+
+                <div id="gmail-alert" class="toast" style="display: none; margin-bottom: 1rem;"></div>
+
+                <!-- View 1: Disconnected / Setup Walkthrough -->
+                <div id="gmail-view-disconnected" hidden>
+                    <div class="wizard-stepper">
+                        <div id="gmail-step-1-ind" class="wizard-step active">1. OAuth Credentials</div>
+                        <div id="gmail-step-2-ind" class="wizard-step">2. Authorize</div>
+                    </div>
+
+                    <!-- Step 1: Upload credentials.json -->
+                    <div id="gmail-step-1">
+                        <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">Step 1: Upload Desktop OAuth Client Credentials</h3>
+                        <p class="muted" style="margin-bottom: 1rem;">
+                            To connect Gmail securely without sharing your password, Google Cloud requires an OAuth client ID. Create a Desktop app OAuth credential in Google Cloud Console and upload the downloaded <code>credentials.json</code> file below.
+                        </p>
+                        <div id="gmail-dropzone" class="dropzone" style="margin-bottom: 1rem;">
+                            <p class="dropzone-text">Drag &amp; drop <strong>credentials.json</strong> here, or click to browse</p>
+                            <button type="button" id="gmail-browse-btn" class="secondary">Browse File</button>
+                            <input type="file" id="gmail-file-input" accept=".json" style="display: none;">
+                        </div>
+                        <div id="gmail-creds-uploaded" class="status-card" style="display: none; background: #e8f5e9; border: 1px solid #c8e6c9; margin-bottom: 1rem;">
+                            <span style="color: #2e7d32; font-weight: 600; font-size: 0.85rem;">✓ Credentials uploaded: <span id="gmail-creds-client-id"></span></span>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end;">
+                            <button type="button" id="gmail-step-1-next" disabled>Next: Sign in with Google &rarr;</button>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Authorize in browser -->
+                    <div id="gmail-step-2" hidden>
+                        <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">Step 2: Sign in with Google</h3>
+                        <p class="muted" style="margin-bottom: 1rem;">
+                            Click the button below to open Google's authorization screen in your browser and grant label access.
+                        </p>
+                        <div style="text-align: center; padding: 1.5rem 0;">
+                            <button type="button" id="gmail-auth-btn" style="padding: 0.65rem 1.25rem; font-size: 0.95rem; font-weight: 600;">Sign in with Google</button>
+                            <p id="gmail-auth-spinner" class="muted" style="display: none; margin-top: 0.75rem; font-size: 0.85rem;">Waiting for browser authorization...</p>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <button type="button" id="gmail-step-2-back" class="secondary">&larr; Back</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- View 2: Connected Dashboard -->
+                <div id="gmail-view-connected" hidden>
+                    <div class="status-card" style="background: #f8f9fa; border: 1px solid #e3e6ea; margin-bottom: 1.25rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                            <div>
+                                <span class="muted" style="font-size: 0.75rem; text-transform: uppercase;">Connected Account</span>
+                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.15rem;">
+                                    <span class="health-indicator green"></span>
+                                    <strong id="gmail-account-email" style="font-size: 1rem; color: #1a1a2e;"></strong>
+                                </div>
+                            </div>
+                            <button type="button" id="gmail-disconnect-btn" class="danger" style="font-size: 0.8rem; padding: 0.35rem 0.65rem;">Disconnect Account</button>
+                        </div>
+                    </div>
+
+                    <!-- Scan Section -->
+                    <div class="status-card" style="margin-bottom: 1rem;">
+                        <h4 style="font-size: 0.95rem; margin-bottom: 0.35rem; color: #0f3460;">📥 Scan Gmail Inbox</h4>
+                        <p class="muted" style="font-size: 0.82rem; margin-bottom: 0.75rem;">
+                            Fetch recent emails safely from your inbox into Mailroom for classification. No existing labels are changed.
+                        </p>
+                        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                            <select id="gmail-scan-limit" style="padding: 0.4rem 0.5rem; font-size: 0.85rem;">
+                                <option value="10">10 messages</option>
+                                <option value="20" selected>20 messages</option>
+                                <option value="50">50 messages</option>
+                                <option value="100">100 messages</option>
+                            </select>
+                            <button type="button" id="gmail-scan-btn">Scan Inbox for New Emails</button>
+                        </div>
+                    </div>
+
+                    <!-- Sync Labels Section -->
+                    <div class="status-card" style="margin-bottom: 1rem;">
+                        <h4 style="font-size: 0.95rem; margin-bottom: 0.35rem; color: #0f3460;">🔄 Sync Labels from Gmail</h4>
+                        <p class="muted" style="font-size: 0.82rem; margin-bottom: 0.75rem;">
+                            If you changed labels in Gmail web/mobile app, sync them back into Mailroom to record your corrections.
+                        </p>
+                        <button type="button" id="gmail-sync-btn" class="secondary">Sync Labels from Gmail</button>
+                    </div>
+
+                    <!-- Apply Labels Section -->
+                    <div class="status-card" style="margin-bottom: 0;">
+                        <h4 style="font-size: 0.95rem; margin-bottom: 0.35rem; color: #0f3460;">🏷️ Apply Labels to Gmail</h4>
+                        <p class="muted" style="font-size: 0.82rem; margin-bottom: 0.75rem;">
+                            Push your reviewed label decisions to Gmail. You will always see an explicit preview before any changes are made.
+                        </p>
+                        <button type="button" id="gmail-preview-btn">Preview &amp; Apply Labels</button>
+
+                        <!-- Preview Subpanel -->
+                        <div id="gmail-apply-preview-card" style="display: none; margin-top: 1rem; border-top: 1px solid #e3e6ea; padding-top: 1rem;">
+                            <div style="background: #eaf1fb; border-left: 4px solid #0f3460; padding: 0.6rem 0.85rem; border-radius: 4px; margin-bottom: 0.75rem;">
+                                <strong id="gmail-preview-summary" style="display: block; font-size: 0.88rem; color: #0f3460;"></strong>
+                                <span style="font-size: 0.78rem; color: #084298;">Safety Guarantee: 0 messages will be archived or deleted.</span>
+                            </div>
+                            <div id="gmail-preview-list" style="max-height: 220px; overflow-y: auto; border: 1px solid #e3e6ea; border-radius: 4px; padding: 0.5rem; margin-bottom: 0.75rem;"></div>
+                            <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                <button type="button" id="gmail-apply-cancel-btn" class="secondary">Cancel</button>
+                                <button type="button" id="gmail-apply-confirm-btn">Confirm &amp; Apply Labels</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; border-top: 1px solid #e3e6ea; padding-top: 1rem; margin-top: 1.25rem;">
+                    <button type="button" id="gmail-done-btn" class="secondary" style="font-size: 0.85rem;">Done</button>
                 </div>
             </div>
         </div>
@@ -2056,6 +2193,294 @@
                 }
             }
 
+            function showGmailAlert(text, isError) {
+                const alertEl = document.getElementById("gmail-alert");
+                if (!alertEl) return;
+                alertEl.textContent = text;
+                alertEl.className = "toast " + (isError ? "err" : "ok");
+                alertEl.style.display = "block";
+                if (!isError) {
+                    setTimeout(function () {
+                        if (alertEl.textContent === text) {
+                            alertEl.style.display = "none";
+                        }
+                    }, 4000);
+                }
+            }
+
+            function openGmailModal() {
+                const modal = document.getElementById("gmail-modal");
+                if (modal) {
+                    modal.removeAttribute("hidden");
+                    modal.style.display = "flex";
+                    loadGmailStatus();
+                }
+            }
+
+            function closeGmailModal() {
+                const modal = document.getElementById("gmail-modal");
+                if (modal) {
+                    modal.setAttribute("hidden", "");
+                    modal.style.display = "none";
+                    const alertEl = document.getElementById("gmail-alert");
+                    if (alertEl) { alertEl.style.display = "none"; }
+                    const previewCard = document.getElementById("gmail-apply-preview-card");
+                    if (previewCard) { previewCard.style.display = "none"; }
+                }
+            }
+
+            function goToGmailStep(step) {
+                const step1 = document.getElementById("gmail-step-1");
+                const step2 = document.getElementById("gmail-step-2");
+                const ind1 = document.getElementById("gmail-step-1-ind");
+                const ind2 = document.getElementById("gmail-step-2-ind");
+                if (step === 1) {
+                    if (step1) step1.removeAttribute("hidden");
+                    if (step2) step2.setAttribute("hidden", "");
+                    if (ind1) ind1.className = "wizard-step active";
+                    if (ind2) ind2.className = "wizard-step";
+                } else if (step === 2) {
+                    if (step1) step1.setAttribute("hidden", "");
+                    if (step2) step2.removeAttribute("hidden");
+                    if (ind1) ind1.className = "wizard-step";
+                    if (ind2) ind2.className = "wizard-step active";
+                }
+            }
+
+            async function loadGmailStatus() {
+                try {
+                    const status = await api("/api/gmail/status");
+                    if (!status) return;
+
+                    const viewDisconnected = document.getElementById("gmail-view-disconnected");
+                    const viewConnected = document.getElementById("gmail-view-connected");
+                    const credsUploaded = document.getElementById("gmail-creds-uploaded");
+                    const credsClientId = document.getElementById("gmail-creds-client-id");
+                    const step1Next = document.getElementById("gmail-step-1-next");
+                    const accountEmail = document.getElementById("gmail-account-email");
+
+                    if (status.connected) {
+                        if (viewDisconnected) viewDisconnected.setAttribute("hidden", "");
+                        if (viewConnected) viewConnected.removeAttribute("hidden");
+                        if (accountEmail) accountEmail.textContent = status.account || "";
+                    } else {
+                        if (viewConnected) viewConnected.setAttribute("hidden", "");
+                        if (viewDisconnected) viewDisconnected.removeAttribute("hidden");
+                        goToGmailStep(1);
+
+                        if (status.credentials_uploaded) {
+                            if (credsUploaded) credsUploaded.style.display = "block";
+                            if (credsClientId) credsClientId.textContent = "credentials.json loaded";
+                            if (step1Next) step1Next.disabled = false;
+                        } else {
+                            if (credsUploaded) credsUploaded.style.display = "none";
+                            if (step1Next) step1Next.disabled = true;
+                        }
+                    }
+                } catch (err) {
+                    showGmailAlert("Failed to check Gmail status: " + err.message, true);
+                }
+            }
+
+            async function uploadGmailCredentialsFile(file) {
+                if (!file) return;
+                if (!file.name.endsWith(".json")) {
+                    showGmailAlert("Please select a valid .json credentials file.", true);
+                    return;
+                }
+                if (file.size > 256 * 1024) {
+                    showGmailAlert("File exceeds maximum allowed size of 256 KB.", true);
+                    return;
+                }
+                const formData = new FormData();
+                formData.append("file", file);
+                try {
+                    const res = await api("/api/gmail/credentials", {
+                        method: "POST",
+                        body: formData,
+                    });
+                    const credsUploaded = document.getElementById("gmail-creds-uploaded");
+                    const credsClientId = document.getElementById("gmail-creds-client-id");
+                    const step1Next = document.getElementById("gmail-step-1-next");
+                    if (credsUploaded) credsUploaded.style.display = "block";
+                    if (credsClientId) credsClientId.textContent = res.client_id || "credentials.json saved";
+                    if (step1Next) step1Next.disabled = false;
+                    showGmailAlert("Credentials saved successfully!", false);
+                } catch (err) {
+                    showGmailAlert("Failed to upload credentials: " + err.message, true);
+                }
+            }
+
+            async function startGmailAuth() {
+                const authBtn = document.getElementById("gmail-auth-btn");
+                const spinner = document.getElementById("gmail-auth-spinner");
+                if (authBtn) authBtn.disabled = true;
+                if (spinner) spinner.style.display = "block";
+                try {
+                    const res = await api("/api/gmail/auth", { method: "POST" });
+                    showGmailAlert("Connected successfully as " + res.account + "!", false);
+                    await loadGmailStatus();
+                    loadStatus();
+                    loadReview();
+                } catch (err) {
+                    showGmailAlert("Authentication error: " + err.message, true);
+                } finally {
+                    if (authBtn) authBtn.disabled = false;
+                    if (spinner) spinner.style.display = "none";
+                }
+            }
+
+            async function disconnectGmail() {
+                if (!confirm("Are you sure you want to disconnect Gmail? Stored credentials will be cleared on this computer.")) {
+                    return;
+                }
+                try {
+                    await api("/api/gmail/disconnect", { method: "POST" });
+                    showGmailAlert("Gmail account disconnected.", false);
+                    await loadGmailStatus();
+                    loadStatus();
+                    loadReview();
+                } catch (err) {
+                    showGmailAlert("Failed to disconnect: " + err.message, true);
+                }
+            }
+
+            async function scanGmail() {
+                const scanBtn = document.getElementById("gmail-scan-btn");
+                const limitSelect = document.getElementById("gmail-scan-limit");
+                const limit = limitSelect ? parseInt(limitSelect.value, 10) : 20;
+                if (scanBtn) {
+                    scanBtn.disabled = true;
+                    scanBtn.textContent = "Scanning...";
+                }
+                try {
+                    const res = await api("/api/gmail/scan", {
+                        method: "POST",
+                        body: { limit: limit },
+                    });
+                    showGmailAlert("Scan complete: " + res.new + " new emails added to Mailroom.", false);
+                    loadStatus();
+                    loadReview();
+                } catch (err) {
+                    showGmailAlert("Scan failed: " + err.message, true);
+                } finally {
+                    if (scanBtn) {
+                        scanBtn.disabled = false;
+                        scanBtn.textContent = "Scan Inbox for New Emails";
+                    }
+                }
+            }
+
+            async function syncGmailLabels() {
+                const syncBtn = document.getElementById("gmail-sync-btn");
+                if (syncBtn) {
+                    syncBtn.disabled = true;
+                    syncBtn.textContent = "Syncing...";
+                }
+                try {
+                    const res = await api("/api/gmail/sync-labels", { method: "POST" });
+                    showGmailAlert("Label sync complete: " + res.corrected + " decisions updated from Gmail, " + res.unchanged + " unchanged.", false);
+                    loadStatus();
+                    loadReview();
+                } catch (err) {
+                    showGmailAlert("Sync failed: " + err.message, true);
+                } finally {
+                    if (syncBtn) {
+                        syncBtn.disabled = false;
+                        syncBtn.textContent = "Sync Labels from Gmail";
+                    }
+                }
+            }
+
+            async function loadGmailApplyPreview() {
+                const previewBtn = document.getElementById("gmail-preview-btn");
+                const previewCard = document.getElementById("gmail-apply-preview-card");
+                const summaryEl = document.getElementById("gmail-preview-summary");
+                const listEl = document.getElementById("gmail-preview-list");
+                const confirmBtn = document.getElementById("gmail-apply-confirm-btn");
+
+                if (previewBtn) {
+                    previewBtn.disabled = true;
+                    previewBtn.textContent = "Loading preview...";
+                }
+                try {
+                    const plan = await api("/api/gmail/apply/preview");
+                    if (previewCard) previewCard.style.display = "block";
+
+                    if (summaryEl) {
+                        summaryEl.textContent = plan.total_messages + " messages ready for label updates (" + (plan.distinct_labels ? plan.distinct_labels.length : 0) + " distinct labels).";
+                    }
+
+                    if (listEl) {
+                        listEl.replaceChildren();
+                        if (plan.items.length === 0) {
+                            const emptyMsg = el("p", { class: "muted", text: "No label changes pending. All Gmail messages match your current decisions." });
+                            listEl.appendChild(emptyMsg);
+                            if (confirmBtn) confirmBtn.disabled = true;
+                        } else {
+                            if (confirmBtn) confirmBtn.disabled = false;
+                            plan.items.forEach(function (item) {
+                                const row = el("div", {
+                                    style: "padding: 0.4rem 0; border-bottom: 1px solid #f0f2f5; font-size: 0.82rem;"
+                                });
+                                const headerRow = el("div", { style: "display: flex; justify-content: space-between; margin-bottom: 0.2rem;" });
+                                const subjSpan = el("strong", { text: item.subject || "(no subject)" });
+                                const senderSpan = el("span", { class: "muted", text: item.sender || "" });
+                                headerRow.appendChild(subjSpan);
+                                headerRow.appendChild(senderSpan);
+                                row.appendChild(headerRow);
+
+                                const tagsDiv = el("div", { style: "display: flex; gap: 0.35rem; flex-wrap: wrap;" });
+                                (item.labels_to_add || []).forEach(function (lbl) {
+                                    tagsDiv.appendChild(el("span", {
+                                        class: "badge proposed",
+                                        text: "+ " + lbl
+                                    }));
+                                });
+                                (item.labels_to_remove || []).forEach(function (lbl) {
+                                    tagsDiv.appendChild(el("span", {
+                                        class: "badge error",
+                                        text: "- " + lbl
+                                    }));
+                                });
+                                row.appendChild(tagsDiv);
+                                listEl.appendChild(row);
+                            });
+                        }
+                    }
+                } catch (err) {
+                    showGmailAlert("Failed to load preview: " + err.message, true);
+                } finally {
+                    if (previewBtn) {
+                        previewBtn.disabled = false;
+                        previewBtn.textContent = "Preview & Apply Labels";
+                    }
+                }
+            }
+
+            async function confirmGmailApply() {
+                const confirmBtn = document.getElementById("gmail-apply-confirm-btn");
+                const previewCard = document.getElementById("gmail-apply-preview-card");
+                if (confirmBtn) {
+                    confirmBtn.disabled = true;
+                    confirmBtn.textContent = "Applying...";
+                }
+                try {
+                    const res = await api("/api/gmail/apply", { method: "POST" });
+                    showGmailAlert("Successfully applied labels to " + res.applied + " messages in Gmail (" + res.failed + " errors).", false);
+                    if (previewCard) previewCard.style.display = "none";
+                    loadStatus();
+                    loadReview();
+                } catch (err) {
+                    showGmailAlert("Apply failed: " + err.message, true);
+                } finally {
+                    if (confirmBtn) {
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = "Confirm & Apply Labels";
+                    }
+                }
+            }
+
             function init() {
                 document.getElementById("refresh-btn").addEventListener("click", function () { loadReview(); loadStatus(); });
                 document.getElementById("classify-btn").addEventListener("click", startBatchClassification);
@@ -2224,6 +2649,84 @@
                 const skipLink = document.getElementById("wizard-skip-link");
                 if (skipLink) { skipLink.addEventListener("click", skipWizard); }
 
+                // Gmail Modal Listeners
+                const gmailToggle = document.getElementById("gmail-modal-toggle");
+                if (gmailToggle) { gmailToggle.addEventListener("click", openGmailModal); }
+                const healthGmailBtn = document.getElementById("health-gmail-manage-btn");
+                if (healthGmailBtn) {
+                    healthGmailBtn.addEventListener("click", function () {
+                        closeHealthModal();
+                        openGmailModal();
+                    });
+                }
+                const gmailCloseBtn = document.getElementById("gmail-close-btn");
+                if (gmailCloseBtn) { gmailCloseBtn.addEventListener("click", closeGmailModal); }
+                const gmailDoneBtn = document.getElementById("gmail-done-btn");
+                if (gmailDoneBtn) { gmailDoneBtn.addEventListener("click", closeGmailModal); }
+
+                const gmailStep1Next = document.getElementById("gmail-step-1-next");
+                if (gmailStep1Next) { gmailStep1Next.addEventListener("click", function () { goToGmailStep(2); }); }
+                const gmailStep2Back = document.getElementById("gmail-step-2-back");
+                if (gmailStep2Back) { gmailStep2Back.addEventListener("click", function () { goToGmailStep(1); }); }
+
+                const gmailBrowseBtn = document.getElementById("gmail-browse-btn");
+                const gmailFileInput = document.getElementById("gmail-file-input");
+                if (gmailBrowseBtn && gmailFileInput) {
+                    gmailBrowseBtn.addEventListener("click", function () { gmailFileInput.click(); });
+                    gmailFileInput.addEventListener("change", function () {
+                        if (this.files && this.files.length > 0) {
+                            uploadGmailCredentialsFile(this.files[0]);
+                            this.value = "";
+                        }
+                    });
+                }
+
+                const gmailDropzone = document.getElementById("gmail-dropzone");
+                if (gmailDropzone) {
+                    ["dragenter", "dragover"].forEach(function (evtName) {
+                        gmailDropzone.addEventListener(evtName, function (e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            gmailDropzone.classList.add("dragover");
+                        });
+                    });
+                    ["dragleave", "dragend"].forEach(function (evtName) {
+                        gmailDropzone.addEventListener(evtName, function (e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            gmailDropzone.classList.remove("dragover");
+                        });
+                    });
+                    gmailDropzone.addEventListener("drop", function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        gmailDropzone.classList.remove("dragover");
+                        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                            uploadGmailCredentialsFile(e.dataTransfer.files[0]);
+                        }
+                    });
+                }
+
+                const gmailAuthBtn = document.getElementById("gmail-auth-btn");
+                if (gmailAuthBtn) { gmailAuthBtn.addEventListener("click", startGmailAuth); }
+                const gmailDisconnectBtn = document.getElementById("gmail-disconnect-btn");
+                if (gmailDisconnectBtn) { gmailDisconnectBtn.addEventListener("click", disconnectGmail); }
+                const gmailScanBtn = document.getElementById("gmail-scan-btn");
+                if (gmailScanBtn) { gmailScanBtn.addEventListener("click", scanGmail); }
+                const gmailSyncBtn = document.getElementById("gmail-sync-btn");
+                if (gmailSyncBtn) { gmailSyncBtn.addEventListener("click", syncGmailLabels); }
+                const gmailPreviewBtn = document.getElementById("gmail-preview-btn");
+                if (gmailPreviewBtn) { gmailPreviewBtn.addEventListener("click", loadGmailApplyPreview); }
+                const gmailApplyCancelBtn = document.getElementById("gmail-apply-cancel-btn");
+                if (gmailApplyCancelBtn) {
+                    gmailApplyCancelBtn.addEventListener("click", function () {
+                        const card = document.getElementById("gmail-apply-preview-card");
+                        if (card) { card.style.display = "none"; }
+                    });
+                }
+                const gmailApplyConfirmBtn = document.getElementById("gmail-apply-confirm-btn");
+                if (gmailApplyConfirmBtn) { gmailApplyConfirmBtn.addEventListener("click", confirmGmailApply); }
+
                 // Close modals on overlay background click
                 const onbModal = document.getElementById("onboarding-modal");
                 if (onbModal) {
@@ -2237,11 +2740,18 @@
                         if (e.target === hlthModal) { closeHealthModal(); }
                     });
                 }
+                const gModal = document.getElementById("gmail-modal");
+                if (gModal) {
+                    gModal.addEventListener("click", function (e) {
+                        if (e.target === gModal) { closeGmailModal(); }
+                    });
+                }
 
                 // Close modals on Escape key
                 document.addEventListener("keydown", function (e) {
                     if (e.key === "Escape") {
                         closeHealthModal();
+                        closeGmailModal();
                     }
                 });
 
