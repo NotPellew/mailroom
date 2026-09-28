@@ -204,7 +204,7 @@ Copy `config.example.json` or edit the config in the data directory
 | `auth` | *Optional Gmail sync* — authenticate with Gmail (`gmail.modify`: read + label changes; stores refresh token in the OS credential store). `--reauth` forces a new browser login. |
 | `scan` | *Optional Gmail sync* — fetch a bounded inbox sample (default 100, cap 1000) using `scan_query` or `--query`. `--documents-only` filters for PDF/XML attachments. `--classify` or `--suggest-labels` (not both) run local inference while download continues |
 | `ingest` | Ingest local `.eml` files or directories into SQLite offline (`<path>`, `--account`, `--limit`, `--no-recursive`) — the primary, Gmail-free path |
-| `classify` | Classify locally. Cached mail: `--message-id` (one) or `--limit N` (messages with no proposal yet; max 1000), plus `--reclassify`/`--offset`. Direct, no database: `--text`, `--file`, or `--stdin`; prints one JSON object |
+| `classify` | Classify locally. Cached mail: `--message-id` (one) or `--limit N` (messages with no proposal yet; max 1000), plus `--reclassify`/`--offset`. Direct, no database: `--text`, `--file`, `--stdin`, or metadata-only (`--subject`, `--filename`, `--sender`); prints one JSON object |
 | `suggest-labels` | Propose a personal label list from cached mail (local model; timestamped JSON; does not write Gmail) |
 | `pilot-report` | Step 5 metrics from your reviews (local model commentary; flags similar subjects with different labels) |
 | `sync-review` | Export reviews; if conflicts remain, stop for the WebUI picker; otherwise refresh config.json examples |
@@ -222,20 +222,24 @@ Copy `config.example.json` or edit the config in the data directory
 
 ## Standalone classification (no Gmail, no database)
 
-Classification can be called directly on text, a local `.eml` file, or piped
-input. Direct mode never opens the database, never touches Gmail, and prints a
+Classification can be called directly on text, a local `.eml` file, piped
+input, or candidate metadata alone (`--subject`, `--filename`, `--sender`).
+Direct mode never opens the database, never touches Gmail, and prints a
 single JSON object to stdout:
 
 ```bash
 python -m Mailroom classify --text "Your receipt for order #1: $19.99"
 python -m Mailroom classify --file invoice.eml
 printf '%s' "$BODY" | python -m Mailroom classify --stdin
+# Metadata-only triage without requiring message bodies:
+python -m Mailroom classify --subject "Invoice #123" --filename "rechnung.pdf"
 ```
 
 The JSON contains `label_ids`, `label_names`, `reason`, `abstain`, and
 `confidence` — never the input text. `--stdin` reads raw body text; use
-`--file` for `.eml` parsing (inert, HTML stripped). Failures print
-`{"error": "..."}` to stderr and exit non-zero.
+`--file` for `.eml` parsing (inert, HTML stripped). Metadata-only flags
+allow downstream tools (like BelegDock) to triage attachments fast without
+downloading bodies. Failures print `{"error": "..."}` to stderr and exit non-zero.
 
 The same pipeline is available as a library:
 
@@ -249,6 +253,13 @@ proposal: Proposal = classifier.classify(
     body="Thanks for your purchase",
 )
 proposal.label_ids  # ["Type/Receipt", "Purchase/Tech", "Retention/Forever"]
+
+# Metadata-only triage (body is optional when metadata is present):
+metadata_proposal: Proposal = classifier.classify(
+    subject="Invoice #123",
+    sender="billing@example.com",
+    filename="rechnung.pdf",
+)
 ```
 
 `classify(...)` also accepts a pre-built `email_text` block and an explicit

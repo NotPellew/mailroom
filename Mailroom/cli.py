@@ -264,6 +264,24 @@ Optional Gmail sync (needs OAuth credentials and the [gmail] extra):
         help="Read email body text from stdin and classify it (prints JSON; no database needed)",
     )
     classify_parser.add_argument(
+        "--subject",
+        type=str,
+        default=None,
+        help="Email subject for direct classification",
+    )
+    classify_parser.add_argument(
+        "--sender",
+        type=str,
+        default=None,
+        help="Email sender for direct classification",
+    )
+    classify_parser.add_argument(
+        "--filename",
+        type=str,
+        default=None,
+        help="Attachment filename for direct classification",
+    )
+    classify_parser.add_argument(
         "--model-endpoint",
         type=str,
         default=None,
@@ -1464,28 +1482,54 @@ def scan_cmd(args, config):
 
 
 def _direct_email_fields(args) -> dict[str, str]:
-    """Return subject/sender/sender_email/body for --text/--file/--stdin."""
+    """Return subject/sender/sender_email/body/filename for direct classification."""
     from Mailroom import ingest as ingest_module
 
-    if getattr(args, "text", None) is not None:
-        return {"subject": "", "sender": "", "sender_email": "", "body": args.text}
-    if getattr(args, "stdin", False):
-        return {"subject": "", "sender": "", "sender_email": "", "body": sys.stdin.read()}
+    subject = getattr(args, "subject", None) or ""
+    sender = getattr(args, "sender", None) or ""
+    filename = getattr(args, "filename", None) or ""
+    sender_email = getattr(args, "sender_email", None) or ""
 
-    path = Path(args.file)
-    if not path.is_file():
-        raise FileNotFoundError(f"File not found: {path}")
-    decoded = ingest_module.parse_eml_bytes(path.read_bytes())
+    if getattr(args, "text", None) is not None:
+        return {
+            "subject": subject,
+            "sender": sender,
+            "sender_email": sender_email,
+            "filename": filename,
+            "body": args.text,
+        }
+    if getattr(args, "stdin", False):
+        return {
+            "subject": subject,
+            "sender": sender,
+            "sender_email": sender_email,
+            "filename": filename,
+            "body": sys.stdin.read(),
+        }
+    if getattr(args, "file", None):
+        path = Path(args.file)
+        if not path.is_file():
+            raise FileNotFoundError(f"File not found: {path}")
+        decoded = ingest_module.parse_eml_bytes(path.read_bytes())
+        return {
+            "subject": subject or (decoded.get("subject") or ""),
+            "sender": sender or (decoded.get("sender") or ""),
+            "sender_email": sender_email or (decoded.get("sender_email") or ""),
+            "filename": filename,
+            "body": decoded.get("body_preview") or "",
+        }
+
     return {
-        "subject": decoded.get("subject") or "",
-        "sender": decoded.get("sender") or "",
-        "sender_email": decoded.get("sender_email") or "",
-        "body": decoded.get("body_preview") or "",
+        "subject": subject,
+        "sender": sender,
+        "sender_email": sender_email,
+        "filename": filename,
+        "body": "",
     }
 
 
 def _classify_direct_cmd(args, config) -> int:
-    """Classify --text/--file/--stdin and print one JSON object to stdout."""
+    """Classify direct input (text/file/stdin/metadata) and print one JSON object to stdout."""
     from Mailroom.classification import ClassificationError, proposal_payload
     from Mailroom.classifier import EmailClassifier
 
@@ -1493,10 +1537,6 @@ def _classify_direct_cmd(args, config) -> int:
         fields = _direct_email_fields(args)
     except OSError as e:
         print(json.dumps({"error": f"Error reading input: {e}"}, ensure_ascii=False), file=sys.stderr)
-        return 1
-
-    if not (fields["body"] or "").strip():
-        print(json.dumps({"error": "no body text to classify"}, ensure_ascii=False), file=sys.stderr)
         return 1
 
     try:
@@ -1509,6 +1549,7 @@ def _classify_direct_cmd(args, config) -> int:
             subject=fields["subject"],
             sender=fields["sender"],
             sender_email=fields["sender_email"],
+            filename=fields.get("filename"),
             body=fields["body"],
         )
     except ClassificationError as e:
@@ -1534,6 +1575,9 @@ def classify_cmd(args, config):
         getattr(args, "text", None) is not None
         or bool(getattr(args, "file", None))
         or bool(getattr(args, "stdin", False))
+        or getattr(args, "subject", None) is not None
+        or getattr(args, "filename", None) is not None
+        or getattr(args, "sender", None) is not None
     )
     db_mode = bool(getattr(args, "message_id", None)) or getattr(args, "limit", None) is not None
 
@@ -1554,8 +1598,8 @@ def classify_cmd(args, config):
 
     if not db_mode:
         print(
-            "Provide --message-id or --limit N for cached mail, or --text/--file/--stdin "
-            "to classify one message directly.",
+            "Provide --message-id or --limit N for cached mail, or direct inputs "
+            "(--text/--file/--stdin/--subject/--filename) to classify one message directly.",
             file=sys.stderr,
         )
         return 1

@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+import re
 import secrets
 import time
 import urllib.parse
@@ -81,17 +82,22 @@ def build_mail_block(
     sender_email: str = "",
     subject: str = "",
     body: str = "",
+    filename: str = "",
 ) -> str:
     """Render the inert mail fields the classifier may see.
 
-    Only From/Subject/body are included; the result is data for the prompt,
+    Only From/Subject/Attachment/body are included; the result is data for the prompt,
     never instructions.
     """
-    return (
-        f"From: {sender or ''} <{sender_email or ''}>\n"
-        f"Subject: {subject or ''}\n\n"
-        f"{body or ''}"
-    )
+    lines = [
+        f"From: {sender or ''} <{sender_email or ''}>",
+        f"Subject: {subject or ''}",
+    ]
+    clean_fn = re.sub(r"[\r\n\x00-\x1f\x7f]+", " ", filename or "").strip()
+    if clean_fn:
+        lines.append(f"Attachment: {clean_fn}")
+    header = "\n".join(lines)
+    return f"{header}\n\n{body or ''}"
 
 
 def _render_label_definitions(labels: Optional[List[Dict[str, Any]]]) -> str:
