@@ -12,7 +12,27 @@ messages, and those writes only happen when you run an explicit command with
 `--apply`. Nothing is ever archived, deleted, trashed, marked spam, or sent, and
 retention is a label only, with no automatic deletion.
 
-## Quick start (local-first, no Gmail account needed)
+## Quick start
+
+### Standalone Desktop App (No Python install needed)
+
+Download the standalone application for your platform from GitHub Releases:
+- **Windows**: `Mailroom.exe`
+- **macOS**: `Mailroom.app` / `Mailroom.dmg`
+- **Linux**: `Mailroom` standalone binary
+
+Double-click to launch. Mailroom automatically:
+1. Initializes its local database and default configuration in your standard user application directory.
+2. Opens your default web browser directly to the review dashboard (`http://127.0.0.1:5000`).
+3. Runs a companion controller window with quick actions: **Open Mailroom Dashboard**, **Status**, and **Quit Mailroom**.
+
+To build the standalone executable from source:
+```bash
+pip install pyinstaller
+python packaging/build.py
+```
+
+### Python Package Installation (CLI & Development)
 
 Prerequisites: Python **3.12+** and a local Ollama installation. Follow the
 official [Ollama Quickstart](https://docs.ollama.com/quickstart) to install it,

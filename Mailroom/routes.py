@@ -1878,4 +1878,15 @@ def api_gmail_sync_labels():
     })
 
 
+@bp.route("/api/system/quit", methods=["POST"])
+def api_system_quit():
+    """Cleanly shut down local Mailroom server process."""
+    shutdown_func = current_app.config.get("SERVER_SHUTDOWN")
+    if not shutdown_func:
+        return jsonify({"error": "Shutdown not available in this mode"}), 400
+    threading.Timer(0.1, shutdown_func).start()
+    return jsonify({"status": "shutting_down", "message": "Mailroom is shutting down."})
+
+
+
 
